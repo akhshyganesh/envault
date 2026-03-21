@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/akhshyganesh/envault/internal/daemon"
 	"github.com/akhshyganesh/envault/internal/scanner"
 	"github.com/akhshyganesh/envault/internal/store"
+	"github.com/akhshyganesh/envault/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -46,6 +48,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(uninstallCmd)
+	rootCmd.AddCommand(uiCmd)
 }
 
 // ── envault init ──────────────────────────────────────────────────────────────
@@ -126,15 +129,18 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "FILE\tVERSIONS\tLAST BACKUP")
-		for _, f := range files {
+		fmt.Fprintln(w, "#\tFILE\tVERSIONS\tLAST BACKUP")
+		for i, f := range files {
 			last := f.Snapshots[len(f.Snapshots)-1]
-			fmt.Fprintf(w, "%s\t%d\t%s\n",
+			fmt.Fprintf(w, "%d\t%s\t%d\t%s\n",
+				i+1,
 				shortenPath(f.FilePath),
 				len(f.Snapshots),
 				timeAgo(last.Timestamp),
 			)
 		}
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Tip: use the # number instead of file path, e.g. 'envault show 3'")
 		return w.Flush()
 	},
 }
@@ -142,8 +148,8 @@ var listCmd = &cobra.Command{
 // ── envault history ───────────────────────────────────────────────────────────
 
 var historyCmd = &cobra.Command{
-	Use:   "history <file>",
-	Short: "Show version history for a .env file",
+	Use:   "history <file or #>",
+	Short: "Show version history for a .env file (accepts index from 'envault list')",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.NewStore()
@@ -151,7 +157,7 @@ var historyCmd = &cobra.Command{
 			return err
 		}
 
-		absPath, err := filepath.Abs(args[0])
+		absPath, err := resolveFileArg(args[0], s)
 		if err != nil {
 			return err
 		}
@@ -187,8 +193,8 @@ var historyCmd = &cobra.Command{
 var restoreVersion int
 
 var restoreCmd = &cobra.Command{
-	Use:   "restore <file>",
-	Short: "Restore a .env file from a backup",
+	Use:   "restore <file or #>",
+	Short: "Restore a .env file from a backup (accepts index from 'envault list')",
 	Long:  "Restores a .env file to a previous version. Use --version to pick a specific version (default: latest).",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -197,7 +203,7 @@ var restoreCmd = &cobra.Command{
 			return err
 		}
 
-		absPath, err := filepath.Abs(args[0])
+		absPath, err := resolveFileArg(args[0], s)
 		if err != nil {
 			return err
 		}
@@ -241,8 +247,8 @@ func init() {
 var showVersion int
 
 var showCmd = &cobra.Command{
-	Use:   "show <file>",
-	Short: "Show the content of a backed-up .env file version",
+	Use:   "show <file or #>",
+	Short: "Show the content of a backed-up .env file version (accepts index from 'envault list')",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.NewStore()
@@ -250,7 +256,7 @@ var showCmd = &cobra.Command{
 			return err
 		}
 
-		absPath, err := filepath.Abs(args[0])
+		absPath, err := resolveFileArg(args[0], s)
 		if err != nil {
 			return err
 		}
@@ -473,7 +479,35 @@ func init() {
 	uninstallCmd.Flags().BoolVar(&pruneData, "prune", false, "Delete all envault data including backups")
 }
 
+// ── envault ui ────────────────────────────────────────────────────────────────
+
+var uiCmd = &cobra.Command{
+	Use:   "ui",
+	Short: "Launch interactive TUI to browse files, versions, and content",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return tui.Run()
+	},
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// resolveFileArg takes a CLI argument that is either a file path or a
+// numeric index (from 'envault list') and returns the absolute file path.
+func resolveFileArg(arg string, s *store.Store) (string, error) {
+	// Try parsing as a number first
+	if idx, err := strconv.Atoi(arg); err == nil {
+		files, err := s.ListTrackedFiles()
+		if err != nil {
+			return "", err
+		}
+		if idx < 1 || idx > len(files) {
+			return "", fmt.Errorf("index %d out of range (1-%d). Run 'envault list' to see indices", idx, len(files))
+		}
+		return files[idx-1].FilePath, nil
+	}
+	// Otherwise treat as a file path
+	return filepath.Abs(arg)
+}
 
 func shortenPath(p string) string {
 	home, err := os.UserHomeDir()
