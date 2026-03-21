@@ -6,7 +6,7 @@ envault is a lightweight background daemon that automatically discovers, version
 
 ## Features
 
-- **Auto-discovery** — Finds all `.env`, `.env.local`, `.env.production`, `.env.*` files recursively
+- **Auto-discovery** — Finds all `.env`, `.env.local`, `.env.production`, `.env.*`, `*.env` files recursively
 - **Git-like versioning** — Content-addressed storage with SHA-256, deduplicates identical content
 - **Background daemon** — Runs silently, scans periodically, zero maintenance
 - **Instant restore** — Recover any version of any `.env` file with one command
@@ -16,7 +16,31 @@ envault is a lightweight background daemon that automatically discovers, version
 
 ## Install
 
-### From Source
+### macOS
+
+```bash
+# Apple Silicon (M1/M2/M3/M4)
+curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-darwin-arm64 -o /usr/local/bin/envault
+sudo install -m 755 envault /usr/local/bin/envault
+
+# Intel Mac
+curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-darwin-amd64 -o envault
+sudo install -m 755 envault /usr/local/bin/envault
+```
+
+### Ubuntu / Linux
+
+```bash
+# x86_64
+curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-linux-amd64 -o envault
+sudo install -m 755 envault /usr/local/bin/envault
+
+# ARM64 (e.g. Raspberry Pi, AWS Graviton)
+curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-linux-arm64 -o envault
+sudo install -m 755 envault /usr/local/bin/envault
+```
+
+### Build From Source
 
 ```bash
 git clone https://github.com/akhshyganesh/envault.git

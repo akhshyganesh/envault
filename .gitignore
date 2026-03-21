@@ -1,6 +1,9 @@
 # Binary
 envault
 
+# Release artifacts
+dist/
+
 # OS
 .DS_Store
 Thumbs.db
