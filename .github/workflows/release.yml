@@ -69,8 +69,8 @@ jobs:
 
       - name: Flatten dist directory
         run: |
-          find dist/ -type f -exec mv {} dist/ \;
-          find dist/ -type d -empty -delete
+          find dist -mindepth 2 -type f -exec mv -t dist {} +
+          find dist -type d -empty -delete
 
       - name: Create checksums
         run: |
