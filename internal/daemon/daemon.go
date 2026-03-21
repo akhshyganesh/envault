@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/akhshy/envault/internal/config"
-	"github.com/akhshy/envault/internal/scanner"
-	"github.com/akhshy/envault/internal/store"
+	"github.com/akhshyganesh/envault/internal/config"
+	"github.com/akhshyganesh/envault/internal/scanner"
+	"github.com/akhshyganesh/envault/internal/store"
 )
 
 // PidFilePath returns the path to the daemon's PID file.

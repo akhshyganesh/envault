@@ -1,4 +1,4 @@
-module github.com/akhshy/envault
+module github.com/akhshyganesh/envault
 
 go 1.26.1
 
