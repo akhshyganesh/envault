@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/akhshy/envault/internal/store"
+	"github.com/akhshyganesh/envault/internal/store"
 )
 
 // shouldSkipDir returns true for directories we should never descend into.

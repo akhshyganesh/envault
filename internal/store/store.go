@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/akhshy/envault/internal/config"
+	"github.com/akhshyganesh/envault/internal/config"
 )
 
 // Snapshot represents one versioned backup of an env file.

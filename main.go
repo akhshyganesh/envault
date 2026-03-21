@@ -1,6 +1,6 @@
 package main
 
-import "github.com/akhshy/envault/cmd"
+import "github.com/akhshyganesh/envault/cmd"
 
 func main() {
 	cmd.Execute()

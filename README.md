@@ -19,7 +19,7 @@ envault is a lightweight background daemon that automatically discovers, version
 ### From Source
 
 ```bash
-git clone https://github.com/akhshy/envault.git
+git clone https://github.com/akhshyganesh/envault.git
 cd envault
 go build -o envault .
 sudo mv envault /usr/local/bin/
