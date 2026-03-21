@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -362,16 +363,114 @@ var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install envault as a startup service (launchd on macOS, systemd on Linux)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		reader := bufio.NewReader(os.Stdin)
+		var watchDirs []string
+
+		fmt.Println("Which directories should envault watch for .env files?")
+		fmt.Println("Enter one directory per line. Press Enter on an empty line when done.")
+		fmt.Println()
+
+		for i := 1; ; i++ {
+			fmt.Printf("  [%d] Directory path (or Enter to finish): ", i)
+			line, _ := reader.ReadString('\n')
+			line = strings.TrimSpace(line)
+
+			if line == "" {
+				break
+			}
+
+			// Expand ~ to home dir
+			if strings.HasPrefix(line, "~/") {
+				home, _ := os.UserHomeDir()
+				line = filepath.Join(home, line[2:])
+			}
+
+			absDir, err := filepath.Abs(line)
+			if err != nil {
+				fmt.Printf("    ⚠ Invalid path: %s\n", err)
+				i--
+				continue
+			}
+
+			info, err := os.Stat(absDir)
+			if err != nil || !info.IsDir() {
+				fmt.Printf("    ⚠ Not a valid directory: %s\n", absDir)
+				i--
+				continue
+			}
+
+			watchDirs = append(watchDirs, absDir)
+			fmt.Printf("    ✓ Added %s\n", absDir)
+		}
+
+		if len(watchDirs) == 0 {
+			home, _ := os.UserHomeDir()
+			watchDirs = []string{home}
+			fmt.Printf("\n  No directories specified, defaulting to %s\n", home)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+		cfg.WatchDirs = watchDirs
+		if err := cfg.Save(); err != nil {
+			return fmt.Errorf("saving config: %w", err)
+		}
+
+		fmt.Println()
+		fmt.Printf("Watching %d directory(ies):\n", len(watchDirs))
+		for _, d := range watchDirs {
+			fmt.Printf("  • %s\n", d)
+		}
+		fmt.Println()
+
 		return daemon.Install()
 	},
 }
 
+var pruneData bool
+
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Remove envault startup service",
+	Short: "Remove envault startup service and optionally delete all data",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return daemon.Uninstall()
+		// Stop daemon if running
+		if running, _ := daemon.IsRunning(); running {
+			fmt.Println("Stopping running daemon...")
+			daemon.Stop()
+		}
+
+		// Remove the OS service
+		if err := daemon.Uninstall(); err != nil {
+			fmt.Printf("⚠ Service removal: %v\n", err)
+		}
+
+		if !pruneData {
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Print("\nDelete all envault data (~/.envault)? This removes all backups. [y/N]: ")
+			answer, _ := reader.ReadString('\n')
+			answer = strings.TrimSpace(strings.ToLower(answer))
+			pruneData = answer == "y" || answer == "yes"
+		}
+
+		if pruneData {
+			vaultDir := config.VaultDir()
+			if err := os.RemoveAll(vaultDir); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", vaultDir, err)
+			}
+			fmt.Printf("✓ Deleted all data at %s\n", vaultDir)
+		} else {
+			fmt.Printf("  Backups preserved at %s\n", config.VaultDir())
+		}
+
+		fmt.Println("✓ envault fully uninstalled")
+		return nil
 	},
+}
+
+func init() {
+	uninstallCmd.Flags().BoolVar(&pruneData, "prune", false, "Delete all envault data including backups")
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

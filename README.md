@@ -2,17 +2,30 @@
 
 **Your `.env` files, safely vaulted.**
 
-envault is a lightweight background daemon that automatically discovers, versions, and backs up all `.env` files on your machine. Accidentally deleted your `.env.production`? Formatted your drive? Just `envault restore` and you're back.
+envault is a lightweight CLI tool and background daemon that automatically discovers, versions, and backs up all `.env` files on your machine. It runs silently in the background, scanning your project directories and creating versioned snapshots of every environment file it finds.
+
+Accidentally deleted your `.env.production`? Formatted your drive? Just `envault restore` and you're back.
+
+## Why envault?
+
+Environment files hold secrets — API keys, database passwords, service credentials. They're excluded from git (`.gitignore`), which means:
+
+- **No version history** — change a value wrong? Gone forever.
+- **No backup** — delete it by accident? Start from scratch.
+- **No recovery** — format your machine? Good luck remembering every key.
+
+envault solves all three. Silently. Automatically.
 
 ## Features
 
-- **Auto-discovery** — Finds all `.env`, `.env.local`, `.env.production`, `.env.*`, `*.env` files recursively
-- **Git-like versioning** — Content-addressed storage with SHA-256, deduplicates identical content
-- **Background daemon** — Runs silently, scans periodically, zero maintenance
+- **Auto-discovery** — Finds `.env`, `.env.local`, `.env.production`, `.env.*`, `*.env`, and any variant recursively
+- **Git-like versioning** — Content-addressed storage with SHA-256; identical content is never stored twice
+- **Background daemon** — Runs silently on a configurable interval, zero maintenance
 - **Instant restore** — Recover any version of any `.env` file with one command
-- **Cross-platform** — Works on macOS (launchd) and Ubuntu/Linux (systemd)
-- **Simple CLI** — No config files needed, sensible defaults, just works
-- **Lightweight** — Single binary, no dependencies, minimal disk usage
+- **Cross-platform** — Native startup support for macOS (launchd) and Ubuntu/Linux (systemd)
+- **Interactive setup** — `envault install` asks which directories to watch — no manual config editing
+- **Clean uninstall** — `envault uninstall --prune` removes everything, or keep backups when removing the service
+- **Lightweight** — Single ~5MB binary, no runtime dependencies
 
 ## Install
 
@@ -20,7 +33,7 @@ envault is a lightweight background daemon that automatically discovers, version
 
 ```bash
 # Apple Silicon (M1/M2/M3/M4)
-curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-darwin-arm64 -o /usr/local/bin/envault
+curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-darwin-arm64 -o envault
 sudo install -m 755 envault /usr/local/bin/envault
 
 # Intel Mac
@@ -42,6 +55,8 @@ sudo install -m 755 envault /usr/local/bin/envault
 
 ### Build From Source
 
+Requires [Go 1.22+](https://go.dev/dl/).
+
 ```bash
 git clone https://github.com/akhshyganesh/envault.git
 cd envault
@@ -49,34 +64,55 @@ go build -o envault .
 sudo mv envault /usr/local/bin/
 ```
 
-### Quick Start
+## Quick Start
 
 ```bash
-# 1. Initialize (creates ~/.envault/)
+# 1. Initialize envault (creates ~/.envault/)
 envault init
 
-# 2. Run your first scan
+# 2. Scan and backup all .env files now
 envault scan
 
-# 3. Install as startup service (runs on boot)
+# 3. Install as a startup service — it will ask which directories to watch
 envault install
+#   Which directories should envault watch for .env files?
+#   Enter one directory per line. Press Enter on an empty line when done.
+#
+#   [1] Directory path (or Enter to finish): ~/projects
+#       ✓ Added /Users/you/projects
+#   [2] Directory path (or Enter to finish):
+#
+#   ✓ Installed launchd service
+#   envault will start automatically on login.
 
-# Done! envault will now protect your .env files automatically.
+# Done! Your .env files are now protected automatically.
 ```
 
-## Usage
+## Commands
 
-### Scan for .env files
+### `envault init`
+
+Creates the `~/.envault/` directory and default config.
 
 ```bash
-# Scan configured directories (default: home directory)
+envault init
+```
+
+### `envault scan [directories...]`
+
+Discovers all `.env` files in the given directories (or configured watch dirs) and creates versioned backups.
+
+```bash
+# Scan configured watch directories
 envault scan
 
 # Scan specific directories
-envault scan ~/projects ~/work
+envault scan ~/projects ~/work /opt/apps
 ```
 
-### List tracked files
+### `envault list` (alias: `envault ls`)
+
+Shows all tracked `.env` files with version count and last backup time.
 
 ```bash
 envault list
@@ -86,20 +122,21 @@ envault list
 # ~/projects/web/.env.local            2         5m ago
 ```
 
-### View version history
+### `envault history <file>`
+
+Shows version history for a specific `.env` file.
 
 ```bash
 envault history ~/projects/api/.env
-# History for ~/projects/api/.env (5 versions):
-#
 # #  ID            DATE              SIZE    COMMENT
 # 1  4237d8ff62eb  2026-03-20 09:15  256B    auto
 # 2  a1b2c3d4e5f6  2026-03-20 14:22  312B    auto
 # 3  d1f201bece7b  2026-03-21 10:00  298B    auto
-# ...
 ```
 
-### Restore a file
+### `envault restore <file> [--version N]`
+
+Restores a `.env` file from backup. Defaults to the latest version.
 
 ```bash
 # Restore latest version
@@ -109,7 +146,9 @@ envault restore ~/projects/api/.env
 envault restore ~/projects/api/.env --version 2
 ```
 
-### View file contents without restoring
+### `envault show <file> [--version N]`
+
+Prints the content of a backed-up version to stdout without modifying any files.
 
 ```bash
 # Show latest backed-up content
@@ -119,38 +158,46 @@ envault show ~/projects/api/.env
 envault show ~/projects/api/.env --version 1
 ```
 
-### Manage watched directories
+### `envault watch <directory>`
+
+Adds a directory to the watch list in config. The daemon picks it up on the next scan cycle.
 
 ```bash
-# Add a directory to watch
 envault watch ~/new-project
-
-# The daemon will scan this directory on its next cycle
+# ✓ Now watching /Users/you/new-project
 ```
 
-### Daemon control
+### `envault start` / `envault stop` / `envault status`
+
+Manually control the background daemon.
 
 ```bash
-# Start the daemon (foreground)
-envault start
-
-# Check if daemon is running
-envault status
-
-# Stop the daemon
-envault stop
+envault start    # Start daemon (foreground)
+envault status   # Check if running
+envault stop     # Stop the daemon
 ```
 
-### Startup service
+### `envault install`
+
+Installs envault as a startup service. Interactively asks which directories to watch.
+
+- **macOS**: Creates `~/Library/LaunchAgents/com.envault.daemon.plist` (runs on login)
+- **Linux**: Creates `~/.config/systemd/user/envault.service` (runs via systemd user service)
 
 ```bash
-# Install as startup service
-# macOS: creates ~/Library/LaunchAgents/com.envault.daemon.plist
-# Linux: creates ~/.config/systemd/user/envault.service
 envault install
+```
 
-# Remove startup service
+### `envault uninstall [--prune]`
+
+Removes the startup service. Asks whether to delete all backup data.
+
+```bash
+# Remove service, keep backups
 envault uninstall
+
+# Remove service AND delete all data
+envault uninstall --prune
 ```
 
 ## How It Works
@@ -159,19 +206,33 @@ envault uninstall
 ~/.envault/
 ├── config.json          # Watch directories, scan interval
 ├── blobs/               # Content-addressed file storage (SHA-256)
-│   ├── 4237d8ff62eb...  # Actual file contents
+│   ├── 4237d8ff62eb...  # Actual file contents (deduplicated)
 │   └── d1f201bece7b...
 ├── index/               # Per-file version history (JSON)
-│   ├── a1b2c3d4.json   # Maps file path → list of snapshots
+│   ├── a1b2c3d4.json   # Maps original file path → list of snapshots
 │   └── e5f6a7b8.json
 ├── envault.pid          # Daemon PID file
-└── envault.log          # Daemon log file
+└── envault.log          # Daemon log
 ```
 
-1. **Scanner** walks your configured directories, skipping `node_modules`, `.git`, `vendor`, etc.
-2. **Store** hashes file contents with SHA-256 — if the content hasn't changed, no new snapshot is created
-3. **Index** maintains a per-file history of all snapshots with timestamps
-4. **Daemon** runs the scanner on a configurable interval (default: 60s)
+1. **Scanner** walks configured directories recursively, skipping `node_modules`, `.git`, `vendor`, `build`, etc.
+2. **Store** hashes file contents with SHA-256. If the hash matches the latest snapshot, nothing is stored (deduplication).
+3. **Index** maintains a per-file history of snapshots with timestamps, sizes, and content hashes.
+4. **Daemon** runs the scanner on a configurable interval (default: 60 seconds).
+
+### What files does it back up?
+
+Any file matching these patterns:
+
+| Pattern | Examples |
+|---------|----------|
+| `.env` | `.env` |
+| `.env.*` | `.env.local`, `.env.production`, `.env.sample`, `.env.development` |
+| `*.env` | `production.env`, `staging.env`, `app.env` |
+
+### What directories does it skip?
+
+`node_modules`, `.git`, `.svn`, `.hg`, `vendor`, `__pycache__`, `.venv`, `venv`, `.tox`, `dist`, `build`, `.envault`
 
 ## Configuration
 
@@ -179,7 +240,7 @@ Config lives at `~/.envault/config.json`:
 
 ```json
 {
-  "watch_dirs": ["/Users/you"],
+  "watch_dirs": ["/Users/you/projects", "/Users/you/work"],
   "scan_interval_secs": 60,
   "max_versions": 0
 }
@@ -188,8 +249,10 @@ Config lives at `~/.envault/config.json`:
 | Field | Description | Default |
 |-------|-------------|---------|
 | `watch_dirs` | Directories to scan recursively | Home directory |
-| `scan_interval_secs` | Seconds between daemon scans | 60 |
-| `max_versions` | Max snapshots per file (0 = unlimited) | 0 |
+| `scan_interval_secs` | Seconds between daemon scans | `60` |
+| `max_versions` | Max snapshots per file (`0` = unlimited) | `0` |
+
+You can edit this file directly, or use `envault watch <dir>` to add directories.
 
 ## Project Structure
 
@@ -197,16 +260,30 @@ Config lives at `~/.envault/config.json`:
 .
 ├── main.go                     # Entry point
 ├── cmd/
-│   └── root.go                 # CLI commands (cobra)
+│   └── root.go                 # All CLI commands (cobra)
 ├── internal/
 │   ├── config/config.go        # Configuration management
 │   ├── store/store.go          # Versioned content-addressed storage
-│   ├── scanner/scanner.go      # .env file discovery
+│   ├── scanner/scanner.go      # .env file discovery and pattern matching
 │   └── daemon/
 │       ├── daemon.go           # Background daemon loop
 │       └── service.go          # OS service install (launchd/systemd)
+├── scripts/
+│   └── build-release.sh        # Cross-compile for all platforms
+├── .github/
+│   └── workflows/
+│       └── release.yml         # CI/CD: auto-build + publish on git tag
 ├── go.mod
 └── README.md
+```
+
+## Contributing
+
+```bash
+git clone https://github.com/akhshyganesh/envault.git
+cd envault
+go build -o envault .
+./envault --help
 ```
 
 ## License
