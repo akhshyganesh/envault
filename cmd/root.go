@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -36,6 +40,8 @@ Works on macOS and Ubuntu.`,
 
 // Execute runs the root command.
 func Execute() {
+	rootCmd.Version = Version
+	rootCmd.SetVersionTemplate("envault {{.Version}}\n")
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -56,6 +62,7 @@ func init() {
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(uiCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(upgradeCmd)
 }
 
 // ── envault init ──────────────────────────────────────────────────────────────
@@ -548,6 +555,114 @@ var versionCmd = &cobra.Command{
 		fmt.Println("  YouTube:    https://www.youtube.com/@code_wid_mapla")
 		fmt.Println()
 	},
+}
+
+// ── envault upgrade ───────────────────────────────────────────────────────────
+
+var upgradeCmd = &cobra.Command{
+	Use:   "upgrade",
+	Short: "Upgrade envault to the latest release from GitHub",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println("Checking for latest version...")
+
+		// Fetch latest release tag from GitHub API
+		latestVersion, err := getLatestVersion()
+		if err != nil {
+			return fmt.Errorf("failed to check latest version: %w", err)
+		}
+
+		if latestVersion == Version {
+			fmt.Printf("✓ Already on the latest version (%s)\n", Version)
+			return nil
+		}
+
+		fmt.Printf("  Current: %s\n", Version)
+		fmt.Printf("  Latest:  %s\n", latestVersion)
+		fmt.Println()
+
+		// Determine asset name based on OS/arch
+		assetName := fmt.Sprintf("envault-%s-%s", runtime.GOOS, runtime.GOARCH)
+		downloadURL := fmt.Sprintf("https://github.com/akhshyganesh/envault/releases/latest/download/%s", assetName)
+
+		fmt.Printf("Downloading %s...\n", assetName)
+
+		// Download to a temp file
+		resp, err := http.Get(downloadURL)
+		if err != nil {
+			return fmt.Errorf("download failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("download failed: HTTP %d (no release binary found for %s)", resp.StatusCode, assetName)
+		}
+
+		// Find current binary path
+		exePath, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("cannot determine binary path: %w", err)
+		}
+		exePath, err = filepath.EvalSymlinks(exePath)
+		if err != nil {
+			return fmt.Errorf("cannot resolve binary path: %w", err)
+		}
+
+		// Write to temp file in the same directory (for atomic rename)
+		tmpFile, err := os.CreateTemp(filepath.Dir(exePath), "envault-upgrade-*")
+		if err != nil {
+			return fmt.Errorf("cannot create temp file: %w (try running with sudo)", err)
+		}
+		tmpPath := tmpFile.Name()
+
+		_, err = io.Copy(tmpFile, resp.Body)
+		tmpFile.Close()
+		if err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("download interrupted: %w", err)
+		}
+
+		// Make executable
+		if err := os.Chmod(tmpPath, 0755); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("cannot set permissions: %w", err)
+		}
+
+		// Atomic replace
+		if err := os.Rename(tmpPath, exePath); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("cannot replace binary: %w (try running with sudo)", err)
+		}
+
+		fmt.Printf("\n✓ Upgraded envault to %s\n", latestVersion)
+		fmt.Println("  Run 'envault version' to verify.")
+		return nil
+	},
+}
+
+// getLatestVersion fetches the latest release tag from GitHub.
+func getLatestVersion() (string, error) {
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // don't follow redirects
+		},
+	}
+	resp, err := client.Get("https://api.github.com/repos/akhshyganesh/envault/releases/latest")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned HTTP %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", err
+	}
+	return release.TagName, nil
 }
 
 // ── envault ui ────────────────────────────────────────────────────────────────

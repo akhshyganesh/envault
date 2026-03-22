@@ -59,6 +59,8 @@ make clean          # rm binary
 | `install` | — | Interactive setup + OS service install |
 | `uninstall` | `--prune` (deletes all backups) | Remove OS service |
 | `ui` | — | Launch interactive TUI |
+| `upgrade` | — | Self-update to latest GitHub release |
+| `version` | — | Print version, build date, and credits |
 
 Commands accepting `<file|#>` resolve numeric args as indices from `envault list`.
 
