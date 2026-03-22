@@ -25,6 +25,7 @@ envault solves all three. Silently. Automatically.
 - **Cross-platform** — Native startup support for macOS (launchd) and Ubuntu/Linux (systemd)
 - **Interactive setup** — `envault install` asks which directories to watch — no manual config editing
 - **Clean uninstall** — `envault uninstall --prune` removes everything, or keep backups when removing the service
+- **Portable backup** — Export/import your entire vault as a zip for system migrations
 - **Lightweight** — Single ~5MB binary, no runtime dependencies
 
 ## Install
@@ -199,6 +200,37 @@ envault uninstall
 # Remove service AND delete all data
 envault uninstall --prune
 ```
+
+### `envault export [--output FILE]`
+
+Exports your entire envault vault (all backups, version history, and config) as a portable zip archive. Use this before formatting your system or migrating to a new machine.
+
+```bash
+# Export with auto-generated timestamped filename
+envault export
+# ✓ Exported 66 files to /Users/you/envault-backup-20260322-143015.zip (34.4KB)
+
+# Export to a specific path
+envault export -o ~/Desktop/my-envault-backup.zip
+```
+
+### `envault import <zipfile> [--force]`
+
+Restores envault data from a previously exported zip archive. Use this after a fresh OS install.
+
+```bash
+# Import on a fresh system
+envault import envault-backup-20260322-143015.zip
+# ✓ Imported 66 files to ~/.envault
+
+# Overwrite existing vault data
+envault import backup.zip --force
+```
+
+**Migration workflow:**
+1. Before formatting: `envault export -o /Volumes/USB/envault-backup.zip`
+2. After fresh install: Install envault, then `envault import /Volumes/USB/envault-backup.zip`
+3. Run `envault list` to verify all backups are restored
 
 ### `envault upgrade`
 

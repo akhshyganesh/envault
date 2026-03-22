@@ -60,6 +60,8 @@ make clean          # rm binary
 | `uninstall` | `--prune` (deletes all backups) | Remove OS service |
 | `ui` | — | Launch interactive TUI |
 | `upgrade` | — | Self-update to latest GitHub release |
+| `export` | `--output/-o` (string) | Export entire vault as a zip archive |
+| `import` | `<zipfile>`, `--force` | Import vault from a previously exported zip |
 | `version` | — | Print version, build date, and credits |
 
 Commands accepting `<file|#>` resolve numeric args as indices from `envault list`.
