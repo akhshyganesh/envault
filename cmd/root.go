@@ -18,6 +18,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version info — set via ldflags at build time.
+var (
+	Version   = "dev"
+	BuildDate = "unknown"
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "envault",
 	Short: "🔒 envault — your .env files, safely vaulted",
@@ -49,6 +55,7 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(uiCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 // ── envault init ──────────────────────────────────────────────────────────────
@@ -57,14 +64,44 @@ var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize envault (creates config and vault directory)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Detect first-time install (vault dir doesn't exist yet)
+		firstTime := false
+		if _, err := os.Stat(config.VaultDir()); os.IsNotExist(err) {
+			firstTime = true
+		}
+
 		cfg := config.DefaultConfig()
 		if err := cfg.Save(); err != nil {
 			return err
 		}
-		fmt.Printf("✓ envault initialized at %s\n", config.VaultDir())
-		fmt.Printf("  Config: %s\n", config.ConfigPath())
-		fmt.Printf("  Watching: %s\n", strings.Join(cfg.WatchDirs, ", "))
-		fmt.Printf("\nRun 'envault scan' to do your first backup, or 'envault start' to run the daemon.\n")
+
+		if firstTime {
+			fmt.Println()
+			fmt.Println("  ╔══════════════════════════════════════════════════╗")
+			fmt.Println("  ║     🔒 Welcome to envault!                      ║")
+			fmt.Println("  ║     Your .env files, safely vaulted.             ║")
+			fmt.Println("  ╚══════════════════════════════════════════════════╝")
+			fmt.Println()
+			fmt.Printf("  ✓ Vault created at %s\n", config.VaultDir())
+			fmt.Printf("  ✓ Config: %s\n", config.ConfigPath())
+			fmt.Printf("  ✓ Watching: %s\n", strings.Join(cfg.WatchDirs, ", "))
+			fmt.Println()
+			fmt.Println("  ── Get Started ──────────────────────────────────")
+			fmt.Println("  Run 'envault scan' to do your first backup")
+			fmt.Println("  Run 'envault start' to launch the background daemon")
+			fmt.Println()
+			fmt.Println("  ── Support the Project ──────────────────────────")
+			fmt.Println("  ⭐ Star us on GitHub: https://github.com/akhshyganesh/envault")
+			fmt.Println("  📺 Watch tutorials:   https://www.youtube.com/@code_wid_mapla")
+			fmt.Println()
+			fmt.Println("  Made with ❤ by Akhshy (Code_Wid_Mapla)")
+			fmt.Println()
+		} else {
+			fmt.Printf("✓ envault re-initialized at %s\n", config.VaultDir())
+			fmt.Printf("  Config: %s\n", config.ConfigPath())
+			fmt.Printf("  Watching: %s\n", strings.Join(cfg.WatchDirs, ", "))
+			fmt.Printf("\nRun 'envault scan' to do your first backup, or 'envault start' to run the daemon.\n")
+		}
 		return nil
 	},
 }
@@ -191,12 +228,15 @@ var historyCmd = &cobra.Command{
 // ── envault restore ───────────────────────────────────────────────────────────
 
 var restoreVersion int
+var restoreOutput string
 
 var restoreCmd = &cobra.Command{
 	Use:   "restore <file or #>",
 	Short: "Restore a .env file from a backup (accepts index from 'envault list')",
-	Long:  "Restores a .env file to a previous version. Use --version to pick a specific version (default: latest).",
-	Args:  cobra.ExactArgs(1),
+	Long: `Restores a .env file to a previous version.
+Use --version to pick a specific version (default: latest).
+Use --output to write the restored file to a custom path instead of the original location.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.NewStore()
 		if err != nil {
@@ -225,21 +265,34 @@ var restoreCmd = &cobra.Command{
 			snap = history.Snapshots[restoreVersion-1]
 		}
 
-		if err := s.RestoreSnapshot(absPath, snap.ID); err != nil {
+		// Determine the target path: --output overrides the original location
+		targetPath := absPath
+		if restoreOutput != "" {
+			targetPath, err = filepath.Abs(restoreOutput)
+			if err != nil {
+				return fmt.Errorf("invalid output path: %w", err)
+			}
+		}
+
+		if err := s.RestoreSnapshot(targetPath, snap.ID); err != nil {
 			return err
 		}
 
 		fmt.Printf("✓ Restored %s to version %s (%s)\n",
-			shortenPath(absPath),
+			shortenPath(targetPath),
 			snap.ID[:12],
 			snap.Timestamp.Local().Format("2006-01-02 15:04"),
 		)
+		if restoreOutput != "" {
+			fmt.Printf("  Written to: %s\n", targetPath)
+		}
 		return nil
 	},
 }
 
 func init() {
 	restoreCmd.Flags().IntVarP(&restoreVersion, "version", "v", 0, "Version number to restore (default: latest)")
+	restoreCmd.Flags().StringVarP(&restoreOutput, "output", "o", "", "Output path to write restored file (default: original location)")
 }
 
 // ── envault show ──────────────────────────────────────────────────────────────
@@ -477,6 +530,24 @@ var uninstallCmd = &cobra.Command{
 
 func init() {
 	uninstallCmd.Flags().BoolVar(&pruneData, "prune", false, "Delete all envault data including backups")
+}
+
+// ── envault version ───────────────────────────────────────────────────────────
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print envault version and credits",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("🔒 envault — your .env files, safely vaulted")
+		fmt.Println()
+		fmt.Printf("  Version:    %s\n", Version)
+		fmt.Printf("  Built:      %s\n", BuildDate)
+		fmt.Println()
+		fmt.Println("  Created by: Akhshy (Code_Wid_Mapla)")
+		fmt.Println("  GitHub:     https://github.com/akhshyganesh/envault")
+		fmt.Println("  YouTube:    https://www.youtube.com/@code_wid_mapla")
+		fmt.Println()
+	},
 }
 
 // ── envault ui ────────────────────────────────────────────────────────────────
