@@ -200,6 +200,31 @@ envault uninstall
 envault uninstall --prune
 ```
 
+### `envault upgrade`
+
+Upgrades envault to the latest GitHub release. Automatically detects your OS and architecture.
+
+```bash
+envault upgrade
+# Checking for latest version...
+#   Current: v0.4.0
+#   Latest:  v0.5.0
+# Downloading envault-darwin-arm64...
+#
+# ✓ Upgraded envault to v0.5.0
+```
+
+If running from `/usr/local/bin/`, you may need `sudo envault upgrade`.
+
+### `envault version`
+
+Prints version info and credits.
+
+```bash
+envault version
+# Also works: envault --version
+```
+
 ## How It Works
 
 ```
