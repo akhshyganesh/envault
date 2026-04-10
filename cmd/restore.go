@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/akhshyganesh/envault/internal/format"
 	"github.com/akhshyganesh/envault/internal/store"
@@ -49,7 +48,7 @@ Use --output to write to a custom path instead of the original location.`,
 
 		targetPath := absPath
 		if restoreOutput != "" {
-			targetPath, err = filepath.Abs(restoreOutput)
+			targetPath, err = format.ExpandPath(restoreOutput)
 			if err != nil {
 				return fmt.Errorf("invalid output path: %w", err)
 			}

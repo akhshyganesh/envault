@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -52,6 +53,35 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// AddWatchDir validates and adds a directory to the watch list.
+// Returns the resolved absolute path and any error.
+func AddWatchDir(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("directory not found: %s", path)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("not a directory: %s", path)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		return "", err
+	}
+
+	for _, d := range cfg.WatchDirs {
+		if d == path {
+			return path, fmt.Errorf("already watching %s", path)
+		}
+	}
+
+	cfg.WatchDirs = append(cfg.WatchDirs, path)
+	if err := cfg.Save(); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // Save writes the config to disk.

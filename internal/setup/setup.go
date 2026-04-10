@@ -238,11 +238,7 @@ func (m model) updateDirs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			val := strings.TrimSpace(m.input.Value())
 			if val != "" {
-				if strings.HasPrefix(val, "~/") {
-					home, _ := os.UserHomeDir()
-					val = filepath.Join(home, val[2:])
-				}
-				if abs, err := filepath.Abs(val); err == nil {
+				if abs, err := format.ExpandPath(val); err == nil {
 					if info, err := os.Stat(abs); err == nil && info.IsDir() && !m.hasDir(abs) {
 						m.dirs = append(m.dirs, dirOption{path: abs, selected: true})
 					}

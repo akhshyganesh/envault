@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/akhshyganesh/envault/internal/store"
 )
@@ -26,18 +24,6 @@ func resolveFileArg(arg string, s *store.Store) (string, error) {
 		return files[idx-1].FilePath, nil
 	}
 	return filepath.Abs(arg)
-}
-
-// sanitizeExtractPath prevents zip-slip attacks by ensuring the extracted
-// path stays within the target directory.
-func sanitizeExtractPath(baseDir, zipEntry string) (string, error) {
-	target := filepath.Join(baseDir, filepath.FromSlash(zipEntry))
-	cleanTarget := filepath.Clean(target) + string(os.PathSeparator)
-	cleanBase := filepath.Clean(baseDir) + string(os.PathSeparator)
-	if !strings.HasPrefix(cleanTarget, cleanBase) {
-		return "", fmt.Errorf("invalid zip entry path: %s", zipEntry)
-	}
-	return target, nil
 }
 
 // getLatestVersion fetches the latest release tag from GitHub.
