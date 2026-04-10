@@ -3,109 +3,111 @@ description: "envault — .env file backup daemon. Use this for all development 
 applyTo: "**"
 ---
 
-# envault Development Agent
+# envault — Development Guide
 
-## Project Purpose
+## What it does
 
-envault is a cross-platform CLI tool and background daemon (Go) that automatically discovers, versions, and backs up `.env` files. It uses SHA-256 content-addressed storage (like git) and supports macOS (launchd) and Linux (systemd).
+CLI tool + background daemon (Go) that auto-discovers, versions, and backs up `.env` files using SHA-256 content-addressed storage. Supports macOS (launchd) and Linux (systemd).
 
-## Tech Stack
+## Stack
 
 - **Language**: Go
-- **CLI Framework**: Cobra (`github.com/spf13/cobra`)
-- **TUI Framework**: BubbleTea (`github.com/charmbracelet/bubbletea`) + Lipgloss + Bubbles viewport
-- **Platforms**: macOS (darwin/amd64, darwin/arm64), Linux (linux/amd64, linux/arm64)
-- **CI/CD**: GitHub Actions (`.github/workflows/release.yml`)
+- **CLI**: Cobra (`github.com/spf13/cobra`)
+- **TUI**: BubbleTea + Lipgloss + Bubbles (`github.com/charmbracelet/*`)
+- **Platforms**: darwin/amd64, darwin/arm64, linux/amd64, linux/arm64
 
 ## Project Structure
 
 ```
-main.go                     — entry point, calls cmd.Execute()
-cmd/root.go                 — all 13 CLI commands (single-file pattern)
-internal/config/config.go   — Config struct, Load/Save (~/.envault/config.json)
-internal/store/store.go     — SHA-256 blob store + JSON index, versioning
-internal/scanner/scanner.go — recursive .env file discovery
-internal/daemon/daemon.go   — background daemon loop, PID management
-internal/daemon/service.go  — launchd (macOS) / systemd (Linux) service install
-internal/tui/tui.go         — interactive TUI (BubbleTea, 3 views)
-Makefile                    — build, install, clean, test targets
-scripts/build-release.sh    — cross-compile for 4 platforms
-.github/workflows/release.yml — CI/CD release on v* tags
+main.go                          — calls cmd.Execute()
+cmd/
+  root.go                        — rootCmd + Execute(); no-arg run → setup wizard (first time) or TUI (returning)
+  helpers.go                     — resolveFileArg, sanitizeExtractPath, getLatestVersion
+  init.go                        — init command
+  scan.go                        — scan command
+  vault.go                       — list, history, show commands
+  restore.go                     — restore command
+  daemon.go                      — start, stop, status, watch commands
+  install.go                     — install, uninstall commands
+  transfer.go                    — export, import commands
+  upgrade.go                     — version, upgrade commands
+  ui.go                          — ui command
+internal/
+  config/config.go               — Config struct, Load/Save (~/.envault/config.json)
+  format/format.go               — ShortenPath, TimeAgo, HumanSize (shared by cmd + tui)
+  store/store.go                 — SHA-256 blob store + JSON index
+  scanner/scanner.go             — recursive .env file discovery
+  daemon/daemon.go               — background loop, PID management
+  daemon/service.go              — launchd/systemd service install
+  setup/setup.go                 — interactive install wizard (3-step BubbleTea)
+  tui/tui.go                     — interactive TUI browser (3-view BubbleTea state machine)
+.github/workflows/release.yml   — CI/CD: build + publish on v* tags
 ```
 
-## Build & Test
+## Build
 
 ```bash
-make build          # go build -o envault .
-make test           # go test ./...
-make install        # sudo cp to /usr/local/bin/
-make clean          # rm binary
+make build     # go build -o envault .
+make test      # go test ./...
+make install   # sudo cp to /usr/local/bin/
+make clean
 ```
 
-## CLI Commands
+## Commands
 
-| Command | Args / Flags | Purpose |
-|---------|-------------|---------|
-| `init` | — | Create `~/.envault/` with default config |
-| `scan [dirs...]` | optional dirs (defaults to config watch dirs) | Discover and back up .env files |
+| Command | Flags | Purpose |
+|---------|-------|---------|
+| `init` | — | Create `~/.envault/` with defaults |
+| `scan [dirs...]` | — | Discover and back up .env files |
 | `list` / `ls` | — | Show tracked files with numbered index |
-| `history <file\|#>` | file path or index number | Show version history |
-| `restore <file\|#>` | `--version/-v` (int, default=latest) | Restore file from backup |
-| `show <file\|#>` | `--version/-v` (int, default=latest) | Print file content to stdout |
-| `watch <dir>` | directory path | Add directory to watch list |
-| `start` | — | Start daemon in foreground |
-| `stop` | — | Send SIGTERM to daemon |
-| `status` | — | Check if daemon is running |
-| `install` | — | Interactive setup + OS service install |
-| `uninstall` | `--prune` (deletes all backups) | Remove OS service |
+| `history <file\|#>` | — | Show version history |
+| `show <file\|#>` | `-v` version | Print backed-up content to stdout |
+| `restore <file\|#>` | `-v` version, `-o` output path | Restore from backup |
+| `watch <dir>` | — | Add directory to watch list |
+| `start` / `stop` / `status` | — | Control background daemon |
+| `install` | — | Interactive TUI wizard — dirs, interval, scan, service install |
+| `uninstall` | `--prune` | Remove OS service (optionally delete all data) |
+| `export` | `-o` path | Export vault as zip |
+| `import <zip>` | `--force` | Import vault from zip |
+| `upgrade` | — | Self-update from GitHub |
+| `version` | — | Print version + credits |
 | `ui` | — | Launch interactive TUI |
-| `upgrade` | — | Self-update to latest GitHub release |
-| `export` | `--output/-o` (string) | Export entire vault as a zip archive |
-| `import` | `<zipfile>`, `--force` | Import vault from a previously exported zip |
-| `version` | — | Print version, build date, and credits |
 
-Commands accepting `<file|#>` resolve numeric args as indices from `envault list`.
+`<file|#>` accepts either a file path or the numeric index shown by `envault list`.
 
-## Storage Layout (`~/.envault/`)
+## Storage Layout
 
 ```
 ~/.envault/
-├── config.json        — WatchDirs, ScanIntervalSecs, MaxVersions
-├── blobs/             — content-addressed files (SHA-256 hash as filename)
-├── index/             — per-file JSON with snapshot history
-├── envault.pid        — daemon PID (when running)
-└── envault.log        — daemon log output
+├── config.json      — WatchDirs, ScanIntervalSecs, MaxVersions
+├── blobs/           — content files named by SHA-256 hash (deduplicated)
+├── index/           — per-file JSON with snapshot history
+├── envault.pid      — daemon PID (runtime only)
+└── envault.log      — daemon log (runtime only)
 ```
-
-## Commit & Release Workflow
-
-1. **Build and verify**: `make build`
-2. **Commit** with conventional prefix: `feat:`, `fix:`, `docs:`, `refactor:`, `release:`
-3. **Push**: `git push origin develop`
-4. **Release** (when asked):
-   - Check latest tag: `git tag --list 'v*' --sort=-v:refname | head -1`
-   - Tag and push: `git tag v<NEXT> && git push origin v<NEXT>`
-   - GitHub Actions builds 4 binaries + checksums and publishes a Release
-5. **Update local binary**: `make install`
 
 ## Code Conventions
 
-- **Single-file CLI**: all commands live in `cmd/root.go`
-- **Internal packages**: everything under `internal/` — not importable externally
-- **File permissions**: `0600` for sensitive files, `0700` for directories
-- **Skip dirs**: node_modules, .git, .svn, .hg, vendor, __pycache__, .venv, venv, .tox, dist, build, .envault
-- **Env file patterns**: `.env` (exact), `.env.*` (prefix), `*.env` (suffix)
-- **Content dedup**: identical file content shares the same blob (SHA-256)
+- **Permissions**: `0600` for files, `0700` for directories
+- **Error wrapping**: `fmt.Errorf("context: %w", err)` throughout
+- **Best-effort exec calls**: use `_ = exec.Command(...).Run()` with a comment
+- **Env file patterns**: `.env`, `.env.*`, `*.env`
+- **Skip dirs**: `node_modules`, `.git`, `.svn`, `.hg`, `vendor`, `__pycache__`, `.venv`, `venv`, `.tox`, `dist`, `build`, `.envault`
+- **Deduplication**: same content → same blob, no duplicate snapshots
 
-## TUI Architecture (internal/tui/)
+## TUI Views
 
-Three-view state machine using BubbleTea:
-1. **fileListView** — browse tracked files (j/k/↑↓ nav, Enter to open)
-2. **historyView** — browse versions for a file (Esc/← to go back)
-3. **contentView** — scrollable viewport showing file content
+Three-view state machine (`fileListView → historyView → contentView`):
+- `↑↓` / `jk` — navigate
+- `Enter` / `l` / `→` — open
+- `Esc` / `h` / `←` — back
+- `g` / `G` — top / bottom
+- `q` — quit
 
-Navigation: `q` quits, `Esc`/`h`/`←` goes back, `Enter`/`l`/`→` opens, `g`/`G` for top/bottom.
+## Release
 
-## Key Docs
-
-- [README.md](README.md) — install instructions, command reference, feature overview
+```bash
+git tag v<X.Y.Z>
+git push origin v<X.Y.Z>
+# GitHub Actions builds 4 binaries + checksums.txt and publishes a Release
+```
