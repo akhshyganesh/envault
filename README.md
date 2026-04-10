@@ -13,22 +13,10 @@ envault solves all three. Silently. Automatically.
 ## Install
 
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-darwin-arm64 -o envault
-sudo install -m 755 envault /usr/local/bin/envault
-
-# macOS (Intel)
-curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-darwin-amd64 -o envault
-sudo install -m 755 envault /usr/local/bin/envault
-
-# Linux (x86_64)
-curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-linux-amd64 -o envault
-sudo install -m 755 envault /usr/local/bin/envault
-
-# Linux (ARM64)
-curl -L https://github.com/akhshyganesh/envault/releases/latest/download/envault-linux-arm64 -o envault
-sudo install -m 755 envault /usr/local/bin/envault
+curl -fsSL https://raw.githubusercontent.com/akhshyganesh/envault/develop/install.sh | sh
 ```
+
+This auto-detects your OS and architecture, downloads the correct binary, and installs it to `/usr/local/bin` (you'll be prompted for your sudo password).
 
 **Build from source** (requires Go 1.22+):
 ```bash
