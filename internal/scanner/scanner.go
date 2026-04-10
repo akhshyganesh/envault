@@ -8,23 +8,24 @@ import (
 	"github.com/akhshyganesh/envault/internal/store"
 )
 
-// shouldSkipDir returns true for directories we should never descend into.
+// skipDirs is the set of directory names that the scanner never descends into.
+var skipDirs = map[string]bool{
+	"node_modules": true,
+	".git":         true,
+	".svn":         true,
+	".hg":          true,
+	"vendor":       true,
+	"__pycache__":  true,
+	".venv":        true,
+	"venv":         true,
+	".tox":         true,
+	"dist":         true,
+	"build":        true,
+	".envault":     true,
+}
+
 func shouldSkipDir(name string) bool {
-	skip := map[string]bool{
-		"node_modules": true,
-		".git":         true,
-		".svn":         true,
-		".hg":          true,
-		"vendor":       true,
-		"__pycache__":  true,
-		".venv":        true,
-		"venv":         true,
-		".tox":         true,
-		"dist":         true,
-		"build":        true,
-		".envault":     true,
-	}
-	return skip[name]
+	return skipDirs[name]
 }
 
 // isEnvFile checks if a filename matches env file patterns.

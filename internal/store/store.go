@@ -148,9 +148,7 @@ func (s *Store) RestoreSnapshot(absPath string, snapshotID string) error {
 		return fmt.Errorf("snapshot blob not found: %w", err)
 	}
 
-	// Ensure parent dir exists
-	dir := filepath.Dir(absPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(absPath), 0700); err != nil {
 		return err
 	}
 
@@ -190,17 +188,4 @@ func (s *Store) ListTrackedFiles() ([]FileHistory, error) {
 		return results[i].FilePath < results[j].FilePath
 	})
 	return results, nil
-}
-
-// Diff returns a simple before/after of two snapshot contents (as strings).
-func (s *Store) Diff(snapA, snapB string) (string, string, error) {
-	a, err := s.GetBlobContent(snapA)
-	if err != nil {
-		return "", "", fmt.Errorf("reading snapshot A: %w", err)
-	}
-	b, err := s.GetBlobContent(snapB)
-	if err != nil {
-		return "", "", fmt.Errorf("reading snapshot B: %w", err)
-	}
-	return string(a), string(b), nil
 }

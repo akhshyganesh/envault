@@ -2,14 +2,13 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/akhshyganesh/envault/internal/format"
 	"github.com/akhshyganesh/envault/internal/store"
 )
 
@@ -273,12 +272,12 @@ func (m model) viewFileList() string {
 		f := m.files[i]
 		last := f.Snapshots[len(f.Snapshots)-1]
 		num := fmt.Sprintf("%d", i+1)
-		path := shortenPath(f.FilePath)
+		path := format.ShortenPath(f.FilePath)
 		if len(path) > 58 {
 			path = "…" + path[len(path)-57:]
 		}
 		versions := fmt.Sprintf("%d", len(f.Snapshots))
-		ago := timeAgo(last.Timestamp)
+		ago := format.TimeAgo(last.Timestamp)
 
 		line := fmt.Sprintf("  %-4s %-60s %8s  %s", num, path, versions, ago)
 
@@ -317,7 +316,7 @@ func (m model) viewHistory() string {
 
 	var b strings.Builder
 
-	title := titleStyle.Render(fmt.Sprintf(" 📋 %s ", shortenPath(m.history.FilePath)))
+	title := titleStyle.Render(fmt.Sprintf(" 📋 %s ", format.ShortenPath(m.history.FilePath)))
 	b.WriteString(title + "\n")
 	b.WriteString(dimStyle.Render(fmt.Sprintf("  %d version(s)", len(m.history.Snapshots))) + "\n\n")
 
@@ -346,7 +345,7 @@ func (m model) viewHistory() string {
 			num,
 			snap.ID[:12],
 			snap.Timestamp.Local().Format("2006-01-02 15:04"),
-			humanSize(snap.Size),
+			format.HumanSize(snap.Size),
 			snap.Comment,
 		)
 
@@ -386,14 +385,14 @@ func (m model) viewContent() string {
 	var b strings.Builder
 
 	title := titleStyle.Render(fmt.Sprintf(" 📄 %s — v%d (%s) ",
-		shortenPath(m.history.FilePath),
+		format.ShortenPath(m.history.FilePath),
 		m.hCursor+1,
 		snap.ID[:12],
 	))
 	b.WriteString(title + "\n")
 	b.WriteString(dimStyle.Render(fmt.Sprintf("  %s  •  %s",
 		snap.Timestamp.Local().Format("2006-01-02 15:04:05"),
-		humanSize(snap.Size),
+		format.HumanSize(snap.Size),
 	)) + "\n\n")
 
 	// Viewport content
@@ -407,40 +406,3 @@ func (m model) viewContent() string {
 	return b.String()
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
-
-func shortenPath(p string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return p
-	}
-	if strings.HasPrefix(p, home) {
-		return "~" + p[len(home):]
-	}
-	return p
-}
-
-func timeAgo(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	}
-}
-
-func humanSize(b int64) string {
-	switch {
-	case b < 1024:
-		return fmt.Sprintf("%dB", b)
-	case b < 1024*1024:
-		return fmt.Sprintf("%.1fKB", float64(b)/1024)
-	default:
-		return fmt.Sprintf("%.1fMB", float64(b)/(1024*1024))
-	}
-}

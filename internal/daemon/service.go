@@ -140,8 +140,8 @@ func installLaunchd(ctx serviceContext) error {
 func uninstallLaunchd() error {
 	plistPath := launchdPlistPath()
 
-	cmd := exec.Command("launchctl", "unload", plistPath)
-	cmd.CombinedOutput() // ignore errors if not loaded
+	// Unload is best-effort; fails gracefully if the service was never loaded.
+	_ = exec.Command("launchctl", "unload", plistPath).Run()
 
 	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
 		return err
@@ -179,8 +179,8 @@ func installSystemd(ctx serviceContext) error {
 		return err
 	}
 
-	// Enable and start
-	exec.Command("systemctl", "--user", "daemon-reload").Run()
+	// Reload unit files before enabling; best-effort.
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
 	if out, err := exec.Command("systemctl", "--user", "enable", "envault.service").CombinedOutput(); err != nil {
 		return fmt.Errorf("systemctl enable failed: %s: %w", string(out), err)
 	}
@@ -191,15 +191,16 @@ func installSystemd(ctx serviceContext) error {
 }
 
 func uninstallSystemd() error {
-	exec.Command("systemctl", "--user", "stop", "envault.service").Run()
-	exec.Command("systemctl", "--user", "disable", "envault.service").Run()
+	// Stop and disable are best-effort; the service may not be running.
+	_ = exec.Command("systemctl", "--user", "stop", "envault.service").Run()
+	_ = exec.Command("systemctl", "--user", "disable", "envault.service").Run()
 
 	unitPath := systemdUnitPath()
 	if err := os.Remove(unitPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
-	exec.Command("systemctl", "--user", "daemon-reload").Run()
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
 	fmt.Println("✓ Removed systemd service")
 	return nil
 }
