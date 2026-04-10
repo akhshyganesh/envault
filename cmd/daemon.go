@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/akhshyganesh/envault/internal/config"
 	"github.com/akhshyganesh/envault/internal/daemon"
+	"github.com/akhshyganesh/envault/internal/format"
 	"github.com/spf13/cobra"
 )
 
@@ -44,35 +43,16 @@ var watchCmd = &cobra.Command{
 	Short: "Add a directory to the watch list",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		absDir, err := filepath.Abs(args[0])
-		if err != nil {
-			return err
-		}
-		info, err := os.Stat(absDir)
-		if err != nil {
-			return fmt.Errorf("directory not found: %s", absDir)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("not a directory: %s", absDir)
-		}
-
-		cfg, err := config.Load()
+		absDir, err := format.ExpandPath(args[0])
 		if err != nil {
 			return err
 		}
 
-		for _, d := range cfg.WatchDirs {
-			if d == absDir {
-				fmt.Printf("Already watching %s\n", absDir)
-				return nil
-			}
-		}
-
-		cfg.WatchDirs = append(cfg.WatchDirs, absDir)
-		if err := cfg.Save(); err != nil {
+		_, err = config.AddWatchDir(absDir)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("✓ Now watching %s\n", absDir)
+		fmt.Printf("✓ Now watching %s\n", format.ShortenPath(absDir))
 		return nil
 	},
 }

@@ -4,9 +4,22 @@ package format
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
+
+// ExpandPath expands a leading ~/ to the user's home directory and resolves to absolute.
+func ExpandPath(p string) (string, error) {
+	if strings.HasPrefix(p, "~/") || p == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot resolve home directory: %w", err)
+		}
+		p = filepath.Join(home, p[1:]) // p[1:] keeps the / or is empty for bare ~
+	}
+	return filepath.Abs(p)
+}
 
 // ShortenPath replaces the home directory prefix with ~.
 func ShortenPath(p string) string {
