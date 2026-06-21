@@ -41,6 +41,7 @@ internal/
   daemon/service.go              — launchd/systemd service install
   setup/setup.go                 — interactive install wizard (3-step BubbleTea)
   tui/tui.go                     — interactive TUI browser (3-view BubbleTea state machine)
+cmd/maintenance.go               — gc, forget commands
 .github/workflows/release.yml   — CI/CD: build + publish on v* tags
 ```
 
@@ -63,6 +64,8 @@ make clean
 | `history <file\|#>` | — | Show version history |
 | `show <file\|#>` | `-v` version | Print backed-up content to stdout |
 | `restore <file\|#>` | `-v` version, `-o` output path | Restore from backup |
+| `forget <file\|#>` | — | Stop tracking a file, delete its history |
+| `gc` | — | Delete unreferenced blobs to reclaim disk |
 | `watch <dir>` | — | Add directory to watch list |
 | `start` / `stop` / `status` | — | Control background daemon |
 | `install` | — | Interactive TUI wizard — dirs, interval, scan, service install |
@@ -94,15 +97,24 @@ make clean
 - **Env file patterns**: `.env`, `.env.*`, `*.env`
 - **Skip dirs**: `node_modules`, `.git`, `.svn`, `.hg`, `vendor`, `__pycache__`, `.venv`, `venv`, `.tox`, `dist`, `build`, `.envault`
 - **Deduplication**: same content → same blob, no duplicate snapshots
+- **Version pruning**: `max_versions` > 0 trims each file's history to the N newest snapshots; `envault gc` reclaims the orphaned blobs
+
+## UI Style
+
+Both the TUI and the setup wizard share one identity (`internal/tui` and `internal/setup`):
+a warm amber accent (256-color `180`/`215`) on neutral grays, a 🔒 brand mark, breadcrumb
+headers over a hairline rule, an accent gutter bar (`▌`) for the selected row, and a status
+bar whose hint keys are rendered in the accent color. Palette lives in the `col*` constants
+at the top of each package's style block — change colors there, not at call sites.
 
 ## TUI Views
 
-Three-view state machine (`fileListView → historyView → contentView`):
-- `↑↓` / `jk` — navigate
-- `Enter` / `l` / `→` — open
-- `Esc` / `h` / `←` — back
-- `g` / `G` — top / bottom
-- `q` — quit
+Four-view state machine (`fileListView → historyView → contentView`, plus a modal
+`inputView` for paths and confirmations):
+- `↑↓` / `jk` — navigate · `Enter` / `l` / `→` — open · `Esc` / `h` / `←` — back
+- `g` / `G` — top / bottom · `q` — quit
+- File list actions: `s` scan · `d` toggle daemon · `w` watch dir · `e` export · `i` import
+- History actions: `r` restore · `R` restore to path · content view: `c` copy
 
 ## Release
 

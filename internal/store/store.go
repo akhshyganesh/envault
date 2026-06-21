@@ -15,11 +15,11 @@ import (
 
 // Snapshot represents one versioned backup of an env file.
 type Snapshot struct {
-	ID        string    `json:"id"`         // SHA-256 of content
-	Timestamp time.Time `json:"timestamp"`  // When this snapshot was taken
-	FilePath  string    `json:"file_path"`  // Original absolute path of the env file
-	Size      int64     `json:"size"`       // File size in bytes
-	Comment   string    `json:"comment"`    // Optional comment (e.g., "auto" or user-provided)
+	ID        string    `json:"id"`        // SHA-256 of content
+	Timestamp time.Time `json:"timestamp"` // When this snapshot was taken
+	FilePath  string    `json:"file_path"` // Original absolute path of the env file
+	Size      int64     `json:"size"`      // File size in bytes
+	Comment   string    `json:"comment"`   // Optional comment (e.g., "auto" or user-provided)
 }
 
 // FileHistory holds all snapshots for a single env file.
@@ -87,10 +87,13 @@ func (s *Store) SaveSnapshot(envFilePath string, comment string) (*Snapshot, boo
 		}
 	}
 
-	// Store blob
+	// Store blob. Content-addressed: if a blob with this hash already exists
+	// (same content seen elsewhere), its bytes are identical, so skip the write.
 	blobPath := filepath.Join(s.blobDir, contentHash)
-	if err := os.WriteFile(blobPath, data, 0600); err != nil {
-		return nil, false, err
+	if _, statErr := os.Stat(blobPath); os.IsNotExist(statErr) {
+		if err := os.WriteFile(blobPath, data, 0600); err != nil {
+			return nil, false, err
+		}
 	}
 
 	snap := Snapshot{
@@ -102,11 +105,24 @@ func (s *Store) SaveSnapshot(envFilePath string, comment string) (*Snapshot, boo
 	}
 
 	history.Snapshots = append(history.Snapshots, snap)
+	s.pruneHistory(history)
 	if err := s.saveHistory(history); err != nil {
 		return nil, false, err
 	}
 
 	return &snap, true, nil
+}
+
+// pruneHistory trims a file's snapshot list to config.MaxVersions, keeping the
+// most recent ones. MaxVersions <= 0 means unlimited (no pruning).
+func (s *Store) pruneHistory(h *FileHistory) {
+	cfg, err := config.Load()
+	if err != nil || cfg.MaxVersions <= 0 {
+		return
+	}
+	if len(h.Snapshots) > cfg.MaxVersions {
+		h.Snapshots = h.Snapshots[len(h.Snapshots)-cfg.MaxVersions:]
+	}
 }
 
 // GetHistory returns all snapshots for a given env file path.
@@ -188,4 +204,57 @@ func (s *Store) ListTrackedFiles() ([]FileHistory, error) {
 		return results[i].FilePath < results[j].FilePath
 	})
 	return results, nil
+}
+
+// GCResult reports what a garbage-collection pass reclaimed.
+type GCResult struct {
+	Removed int   // number of orphaned blobs deleted
+	Freed   int64 // total bytes reclaimed
+}
+
+// GC removes blobs that are no longer referenced by any snapshot. Orphans
+// accumulate when version pruning trims old snapshots or tracked files are
+// forgotten.
+func (s *Store) GC() (*GCResult, error) {
+	files, err := s.ListTrackedFiles()
+	if err != nil {
+		return nil, err
+	}
+
+	referenced := make(map[string]bool)
+	for _, f := range files {
+		for _, snap := range f.Snapshots {
+			referenced[snap.ID] = true
+		}
+	}
+
+	entries, err := os.ReadDir(s.blobDir)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &GCResult{}
+	for _, entry := range entries {
+		if entry.IsDir() || referenced[entry.Name()] {
+			continue
+		}
+		blobPath := filepath.Join(s.blobDir, entry.Name())
+		if info, statErr := os.Stat(blobPath); statErr == nil {
+			if err := os.Remove(blobPath); err == nil {
+				res.Removed++
+				res.Freed += info.Size()
+			}
+		}
+	}
+	return res, nil
+}
+
+// Forget removes all tracked history for a file. Blobs are left for GC to
+// reclaim (they may be shared with other files via content addressing).
+func (s *Store) Forget(absPath string) error {
+	indexPath := filepath.Join(s.indexDir, fileKey(absPath)+".json")
+	if err := os.Remove(indexPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

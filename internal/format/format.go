@@ -6,15 +6,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+// homeDir caches the user's home directory; it never changes during a run and
+// ShortenPath is called for every row on every TUI render.
+var homeDir = sync.OnceValue(func() string {
+	h, _ := os.UserHomeDir()
+	return h
+})
 
 // ExpandPath expands a leading ~/ to the user's home directory and resolves to absolute.
 func ExpandPath(p string) (string, error) {
 	if strings.HasPrefix(p, "~/") || p == "~" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("cannot resolve home directory: %w", err)
+		home := homeDir()
+		if home == "" {
+			return "", fmt.Errorf("cannot resolve home directory")
 		}
 		p = filepath.Join(home, p[1:]) // p[1:] keeps the / or is empty for bare ~
 	}
@@ -23,11 +31,8 @@ func ExpandPath(p string) (string, error) {
 
 // ShortenPath replaces the home directory prefix with ~.
 func ShortenPath(p string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return p
-	}
-	if strings.HasPrefix(p, home) {
+	home := homeDir()
+	if home != "" && strings.HasPrefix(p, home) {
 		return "~" + p[len(home):]
 	}
 	return p
