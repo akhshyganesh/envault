@@ -68,9 +68,14 @@ func ScanDirectory(dir string, s *store.Store) (*ScanResult, error) {
 
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			// Permission denied, etc. — skip but record
+			// Permission denied, etc. — record and skip just this entry.
+			// Only skip the whole subtree when the error is on a directory;
+			// skipping on a file would wrongly abandon its siblings.
 			result.Errors = append(result.Errors, err)
-			return filepath.SkipDir
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		if d.IsDir() {

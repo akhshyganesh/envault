@@ -27,8 +27,8 @@ var uninstallCmd = &cobra.Command{
 	Short: "Remove envault startup service and optionally delete all data",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if running, _ := daemon.IsRunning(); running {
-			fmt.Println("Stopping running daemon...")
-			daemon.Stop()
+			// Best-effort; Stop() prints its own confirmation.
+			_ = daemon.Stop()
 		}
 
 		if err := daemon.Uninstall(); err != nil {

@@ -60,41 +60,52 @@ type installMsg struct {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
+// Shared with the TUI: warm amber accent on neutral grays.
+const (
+	colAccent   = "180"
+	colAccentHi = "215"
+	colMuted    = "245"
+	colFaint    = "240"
+	colSuccess  = "114"
+	colWarn     = "215"
+)
+
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("229")).
-			Background(lipgloss.Color("57")).
-			Padding(0, 1)
+	brandStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colAccent)).
+			Bold(true)
+
+	ruleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colFaint))
 
 	stepLabelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(lipgloss.Color(colMuted))
 
 	cursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("57")).
+			Foreground(lipgloss.Color(colAccent)).
 			Bold(true)
 
 	activeRowStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("229")).
+			Foreground(lipgloss.Color(colAccentHi)).
 			Bold(true)
 
 	checkedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42"))
+			Foreground(lipgloss.Color(colSuccess))
 
 	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(lipgloss.Color(colMuted))
 
 	successStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42"))
+			Foreground(lipgloss.Color(colSuccess))
 
 	warnStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214"))
+			Foreground(lipgloss.Color(colWarn))
 
 	hintStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(lipgloss.Color(colMuted))
 
 	dividerStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("238"))
+			Foreground(lipgloss.Color(colFaint))
 )
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -385,18 +396,19 @@ func plural(n int, sing, plur string) string {
 func (m model) View() string {
 	var b strings.Builder
 
-	// Header
-	title := titleStyle.Render(" 🔒 envault setup ")
+	// Header — amber brand, step label, hairline rule.
 	var label string
 	switch m.step {
 	case stepDirs:
-		label = stepLabelStyle.Render("  Step 1 of 3 — Watch Directories")
+		label = "Step 1 of 3 — Watch Directories"
 	case stepInterval:
-		label = stepLabelStyle.Render("  Step 2 of 3 — Scan Interval")
+		label = "Step 2 of 3 — Scan Interval"
 	case stepInstall:
-		label = stepLabelStyle.Render("  Step 3 of 3 — Installing")
+		label = "Step 3 of 3 — Installing"
 	}
-	b.WriteString(title + label + "\n\n")
+	width := max(m.width, 1)
+	b.WriteString(brandStyle.Render("🔒 envault setup") + ruleStyle.Render("  ·  ") + stepLabelStyle.Render(label) + "\n")
+	b.WriteString(ruleStyle.Render(strings.Repeat("─", width)) + "\n\n")
 
 	switch m.step {
 	case stepDirs:

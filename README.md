@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/akhshyganesh/envault/develop/instal
 
 This auto-detects your OS and architecture, downloads the correct binary, and installs it to `/usr/local/bin` (you'll be prompted for your sudo password).
 
-**Build from source** (requires Go 1.22+):
+**Build from source** (requires Go 1.26+):
 ```bash
 git clone https://github.com/akhshyganesh/envault.git && cd envault
 make build && sudo make install
@@ -34,6 +34,18 @@ That's it. On first run, envault detects your project directories and walks you 
 
 After setup, running `envault` opens the interactive file browser. Use `envault install` to re-run the wizard at any time.
 
+## Interactive UI
+
+`envault` and `envault ui` open a terminal interface styled like a modern command tool — a
+warm amber accent on neutral grays, breadcrumb navigation (`envault › ~/app/.env › v3`),
+and a status bar where every shortcut key is highlighted. Browse tracked files, drill into a
+file's version history, and view any snapshot's contents without leaving the keyboard.
+
+From the file list you can scan (`s`), toggle the daemon (`d`), add a watch dir (`w`), and
+export/import (`e`/`i`). In history, `r` restores in place and `R` restores to a chosen path;
+in the content view, `c` copies to the clipboard. `Enter`/`→` drills in, `Esc`/`←` goes back,
+`q` quits.
+
 ## Commands
 
 | Command | Description |
@@ -44,6 +56,8 @@ After setup, running `envault` opens the interactive file browser. Use `envault 
 | `history <file\|#>` | Show version history for a file |
 | `show <file\|#> [-v N]` | Print a backed-up version to stdout |
 | `restore <file\|#> [-v N] [-o path]` | Restore a file from backup |
+| `forget <file\|#>` | Stop tracking a file and delete its history |
+| `gc` | Reclaim disk space by deleting unreferenced blobs |
 | `watch <dir>` | Add a directory to the watch list |
 | `start` / `stop` / `status` | Control the background daemon |
 | `install` | Interactive setup + install as OS startup service |
@@ -83,7 +97,12 @@ Commands accepting `<file|#>` work with either the file path or the `#` index fr
 }
 ```
 
-Edit directly or use `envault watch <dir>` to add directories. `max_versions: 0` means unlimited.
+Edit directly or use `envault watch <dir>` to add directories.
+
+- `max_versions: 0` keeps unlimited history. Set it to a positive number to keep only the
+  N newest snapshots per file — older ones are pruned automatically on the next backup.
+- After pruning (or `envault forget`), run `envault gc` to delete the now-unreferenced
+  content blobs and reclaim disk space.
 
 ## Migration
 
