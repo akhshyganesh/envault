@@ -64,6 +64,7 @@ in the content view, `c` copies to the clipboard. `Enter`/`→` drills in, `Esc`
 | `uninstall [--prune]` | Remove the service (optionally delete all backups) |
 | `export [-o file.zip]` | Export entire vault as a zip archive |
 | `import <file.zip> [--force]` | Import vault from a zip archive |
+| `peek <file.zip> [file\|#]` | Browse an exported zip read-only, without importing it |
 | `upgrade` | Self-update to the latest GitHub release |
 | `version` | Print version and build info |
 | `ui` | Launch interactive TUI browser |
@@ -113,6 +114,16 @@ envault export -o ~/backup.zip
 # After fresh install
 envault import ~/backup.zip
 envault list   # verify everything is restored
+```
+
+Need something out of a backup without importing it? `peek` reads the zip in place and
+never touches `~/.envault`:
+
+```bash
+envault peek ~/backup.zip                 # what's inside
+envault peek ~/backup.zip 3               # version history for file #3
+envault peek ~/backup.zip 3 --show -v 2   # print version 2
+envault peek ~/backup.zip 3 -o ./.env     # pull one version out
 ```
 
 ## License
