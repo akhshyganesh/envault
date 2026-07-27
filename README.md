@@ -61,6 +61,12 @@ and copy contents, restore in place or to a chosen path, forget a file, scan, ad
 directories, edit settings, start/stop the daemon, reclaim space, export a zip (downloads to
 your browser), import one, and peek inside a backup zip read-only.
 
+Each version renders as a ledger of `KEY` and value rather than a wall of text. Values are
+masked until you reveal them — one row at a time, or `r` for all of them — and keys that
+changed since the previous version are marked, so you can see what a snapshot actually did.
+Press `t` for the verbatim file, `/` to filter, and `?` for the full keyboard map; the
+motions match the terminal UI. Drag the divider to resize the file list.
+
 It binds to `127.0.0.1` only and every request needs the one-time token in the URL it prints,
 so nothing else on your network — or on a web page you happen to be visiting — can reach it.
 It serves your `.env` contents in the clear over local HTTP, so leave it running only while

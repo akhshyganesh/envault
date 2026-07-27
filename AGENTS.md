@@ -143,8 +143,12 @@ headers over a hairline rule, an accent gutter bar (`▌`) for the selected row,
 bar whose hint keys are rendered in the accent color. Palette lives in the `col*` constants
 at the top of each package's style block — change colors there, not at call sites.
 
-The browser UI (`internal/web/index.html`) carries the same identity in CSS custom
-properties (`--accent: #d7af87`, `--accent-bright: #ffaf5f`) declared once in `:root`.
+The browser UI deliberately does **not** share that identity. `internal/web/index.html` is
+a light interface (`--page: #fbfbfa` on `--text: #1b1f23`) with a single blue accent
+(`--accent: #2563eb`) reserved for selection, focus, and the active version — never for
+decoration. Key names in the ledger stay neutral so color always means "this one". Green
+(`--green`) and amber (`--amber`) are semantic only: a key added or changed since the
+previous version. Every value lives in `:root`; change colors there, not at call sites.
 
 ## TUI Views
 
@@ -165,6 +169,17 @@ in the `X-Envault-Token` header (the page bootstraps it from `?token=`). Non-loo
 handlers delegate to the same `store`/`config`/`scanner`/`daemon`/`transfer` calls the CLI
 uses — add behavior there, not in the HTTP layer. The page builds its DOM node by node
 (no `innerHTML`), so `.env` contents can never be interpreted as markup.
+
+Layout is an app shell, not a document: `body` is a `100dvh` grid with `overflow: hidden`,
+and only the two inner `.scroll` panes move. Every nested grid track carries `min-height: 0`
+— drop it and the panes stop scrolling and the page grows instead. The divider between them
+is a real `<button role="separator">` that drags, takes arrow keys, and persists its width
+to `localStorage`.
+
+The ledger renders each version as `KEY → value` rows with values masked by a **fixed-width**
+dot string — the mask length must never track the secret's length. Reveal is per row (or `r`
+for all) and resets on every version change. `t` shows the verbatim file, which is the escape
+hatch for anything the dotenv parser counts as unreadable rather than silently dropping.
 
 ## Release
 
