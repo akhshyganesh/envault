@@ -128,9 +128,9 @@ relocate the whole vault with `t.Setenv("HOME", t.TempDir())`.
 
 `go test ./...`. Tests live beside the code as `*_test.go`; today that means
 `internal/format`, `internal/scanner`, `internal/store`, `internal/transfer`,
-`internal/tui`, and `internal/web`. `cmd/`, `internal/config`, `internal/daemon`, and
-`internal/setup` have no
-tests yet — new work in those packages should add them rather than inherit the gap.
+`internal/tui`, `internal/web`, and `cmd` (upgrade preflight only). `internal/config`,
+`internal/daemon`, and `internal/setup` have no tests yet — new work in those packages
+should add them rather than inherit the gap.
 
 Tests must never touch the real vault: set `t.Setenv("HOME", t.TempDir())` before calling
 anything that resolves `config.VaultDir()`, and use `t.TempDir()` for scanned fixtures.
