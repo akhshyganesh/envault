@@ -46,6 +46,26 @@ export/import (`e`/`i`). In history, `r` restores in place and `R` restores to a
 in the content view, `c` copies to the clipboard. `Enter`/`→` drills in, `Esc`/`←` goes back,
 `q` quits.
 
+## Browser UI
+
+Prefer clicking to typing? `envault web` starts a small local server and opens it in your
+browser:
+
+```bash
+envault web              # opens http://127.0.0.1:7391 automatically
+envault web --port 8080 --no-open
+```
+
+The page does everything the terminal does — browse tracked files and their versions, view
+and copy contents, restore in place or to a chosen path, forget a file, scan, add watch
+directories, edit settings, start/stop the daemon, reclaim space, export a zip (downloads to
+your browser), import one, and peek inside a backup zip read-only.
+
+It binds to `127.0.0.1` only and every request needs the one-time token in the URL it prints,
+so nothing else on your network — or on a web page you happen to be visiting — can reach it.
+It serves your `.env` contents in the clear over local HTTP, so leave it running only while
+you're using it, and press Ctrl+C when you're done.
+
 ## Commands
 
 | Command | Description |
@@ -68,6 +88,7 @@ in the content view, `c` copies to the clipboard. `Enter`/`→` drills in, `Esc`
 | `upgrade` | Self-update to the latest GitHub release |
 | `version` | Print version and build info |
 | `ui` | Launch interactive TUI browser |
+| `web [-p port] [--no-open]` | Serve the browser UI on localhost |
 
 Commands accepting `<file|#>` work with either the file path or the `#` index from `envault list`.
 

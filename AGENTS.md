@@ -33,6 +33,7 @@ cmd/
   peek.go                        — peek command (read-only archive browsing)
   upgrade.go                     — version, upgrade commands
   ui.go                          — ui command
+  web.go                         — web command (local browser UI server)
 internal/
   config/config.go               — Config struct, Load/Save (~/.envault/config.json)
   format/format.go               — ShortenPath, TimeAgo, HumanSize (shared by cmd + tui)
@@ -44,6 +45,8 @@ internal/
   transfer/transfer.go           — vault export/import (zip)
   transfer/archive.go            — read-only reader for an export zip (used by peek)
   tui/tui.go                     — interactive TUI browser (3-view BubbleTea state machine)
+  web/server.go                  — loopback HTTP server + JSON API behind a session token
+  web/index.html                 — single-page browser UI (embedded, no external assets)
 cmd/maintenance.go               — gc, forget commands
 .github/workflows/release.yml   — CI/CD: build + publish on v* tags
 ```
@@ -79,6 +82,7 @@ make clean
 | `upgrade` | — | Self-update from GitHub |
 | `version` | — | Print version + credits |
 | `ui` | — | Launch interactive TUI |
+| `web` | `-p` port, `--no-open` | Serve the browser UI on 127.0.0.1 (token-authenticated) |
 
 `<file|#>` accepts either a file path or the numeric index shown by `envault list`.
 
