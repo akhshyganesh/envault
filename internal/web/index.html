@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>envault</title>
+<style>
+  :root {
+    --bg: #14130f;
+    --panel: #1c1a16;
+    --panel-2: #232019;
+    --line: #332f27;
+    --fg: #e8e3d8;
+    --muted: #9a9384;
+    --accent: #d7af87;
+    --accent-bright: #ffaf5f;
+    --danger: #e07b6a;
+    --ok: #96c47f;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 var(--mono);
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+  }
+  header .brand { color: var(--accent); font-weight: 600; letter-spacing: .04em; }
+  header .path { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px;
+    font-size: 12px; color: var(--muted); background: var(--panel);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); }
+  button {
+    font: inherit; font-size: 13px; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-bright); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 12px 20px; border-bottom: 1px solid var(--line);
+  }
+  main { display: grid; grid-template-columns: minmax(320px, 4fr) 6fr; min-height: calc(100vh - 116px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .col { padding: 16px 20px; }
+  .col + .col { border-left: 1px solid var(--line); }
+  @media (max-width: 900px) { .col + .col { border-left: 0; border-top: 1px solid var(--line); } }
+  h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--muted); font-weight: 600; margin: 0 0 12px; word-break: break-all;
+  }
+  .row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 8px 10px 8px 6px; border-radius: 6px; cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .row:hover { background: var(--panel); }
+  .row.sel { background: var(--panel-2); border-left-color: var(--accent); }
+  .row .idx { color: var(--muted); font-size: 12px; min-width: 20px; }
+  .row .name { flex: 1; word-break: break-all; }
+  .row .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .row .warn { color: var(--danger); font-size: 12px; }
+  .empty { color: var(--muted); padding: 24px 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; padding: 0 10px 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  tr.sel td { color: var(--accent-bright); }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover td { background: var(--panel); }
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 14px; overflow: auto; max-height: 46vh; margin: 0;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  #toast {
+    position: fixed; right: 20px; bottom: 20px; max-width: 460px;
+    background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    padding: 12px 14px; border-radius: 6px; display: none; white-space: pre-wrap;
+  }
+  #toast.err { border-left-color: var(--danger); }
+  dialog {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 20px; min-width: min(520px, 92vw); font: inherit;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h3 { margin: 0 0 6px; font-size: 15px; color: var(--accent); }
+  dialog p { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=number], textarea {
+    width: 100%; font: inherit; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">🔒 envault</span>
+  <span class="path" id="vaultDir"></span>
+  <span class="spacer"></span>
+  <span class="pill"><span class="dot" id="daemonDot"></span><span id="daemonText">checking…</span></span>
+  <button id="daemonBtn">…</button>
+</header>
+
+<div class="toolbar">
+  <button class="primary" id="scanBtn">Scan now</button>
+  <button id="watchBtn">Add watch dir</button>
+  <button id="settingsBtn">Settings</button>
+  <button id="exportBtn">Export zip</button>
+  <button id="importBtn">Import zip</button>
+  <button id="peekBtn">Peek a zip</button>
+  <button id="gcBtn">Reclaim space</button>
+  <button id="refreshBtn">Refresh</button>
+</div>
+
+<main>
+  <section class="col">
+    <h2 id="filesTitle">Tracked files</h2>
+    <div id="files"></div>
+  </section>
+  <section class="col">
+    <h2 id="detailTitle">Versions</h2>
+    <div id="detail"><div class="empty">Select a file to see its history.</div></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<dialog id="prompt">
+  <form method="dialog">
+    <h3 id="promptTitle"></h3>
+    <p id="promptHint"></p>
+    <input type="text" id="promptInput" autocomplete="off" spellcheck="false">
+    <div class="dialog-actions">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h3>Settings</h3>
+    <p>Saved to config.json inside your vault.</p>
+    <label for="intervalInput">Scan interval (seconds)</label>
+    <input type="number" id="intervalInput" min="1">
+    <label for="maxVersionsInput">Max versions per file (0 = unlimited)</label>
+    <input type="number" id="maxVersionsInput" min="0">
+    <label for="watchDirsInput">Watch directories (one per line)</label>
+    <textarea id="watchDirsInput" rows="4"></textarea>
+    <div class="dialog-actions">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const TOKEN = "__ENVAULT_TOKEN__";
+
+// Strip the token from the address bar so it does not linger in history.
+if (location.search) history.replaceState(null, "", location.pathname);
+
+let state = { files: [], config: {}, daemon: {} };
+let selected = null;   // 1-based index into the visible file list
+let detail = null;     // { display, snapshots, version, content }
+let peek = null;       // { path, files } while browsing an archive read-only
+
+async function api(path, method, body) {
+  const res = await fetch(path, {
+    method: method || "GET",
+    headers: Object.assign({ "X-Envault-Token": TOKEN },
+      body ? { "Content-Type": "application/json" } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    let msg = res.status + " " + res.statusText;
+    try { msg = (await res.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+let toastTimer;
+function toast(msg, isError) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = isError ? "err" : "";
+  el.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.style.display = "none"; }, 6000);
+}
+
+function ask(title, hint, value) {
+  const dlg = document.getElementById("prompt");
+  document.getElementById("promptTitle").textContent = title;
+  document.getElementById("promptHint").textContent = hint || "";
+  const input = document.getElementById("promptInput");
+  input.value = value || "";
+  dlg.showModal();
+  input.focus();
+  input.select();
+  return new Promise(function (resolve) {
+    dlg.addEventListener("close", function () {
+      resolve(dlg.returnValue === "ok" && input.value.trim() ? input.value.trim() : null);
+    }, { once: true });
+  });
+}
+
+async function guard(fn) {
+  try { await fn(); } catch (err) { toast(err.message, true); }
+}
+
+function mkButton(label, onclick, cls) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  if (cls) b.className = cls;
+  b.onclick = onclick;
+  return b;
+}
+
+// --- rendering ---
+
+function renderState() {
+  document.getElementById("vaultDir").textContent = state.vault_dir || "";
+  const running = state.daemon.running;
+  document.getElementById("daemonDot").className = "dot" + (running ? " on" : "");
+  document.getElementById("daemonText").textContent =
+    running ? "daemon running (pid " + state.daemon.pid + ")" : "daemon stopped";
+  document.getElementById("daemonBtn").textContent = running ? "Stop" : "Start";
+  renderFiles();
+}
+
+function renderFiles() {
+  const list = peek ? peek.files : state.files;
+  document.getElementById("filesTitle").textContent =
+    peek ? "Archive (read-only) · " + peek.path : "Tracked files";
+
+  const box = document.getElementById("files");
+  box.textContent = "";
+
+  if (peek) {
+    const back = mkButton("← back to vault", function () {
+      peek = null; selected = null; detail = null;
+      renderFiles(); renderDetail();
+    });
+    back.style.marginBottom = "12px";
+    box.appendChild(back);
+  }
+
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = peek
+      ? "This archive contains no tracked .env files."
+      : "Nothing tracked yet — add a watch directory, then hit Scan now.";
+    box.appendChild(empty);
+    return;
+  }
+
+  for (const f of list) {
+    const row = document.createElement("div");
+    row.className = "row" + (selected === f.index ? " sel" : "");
+    row.onclick = function () { selectFile(f.index); };
+
+    const idx = document.createElement("span");
+    idx.className = "idx";
+    idx.textContent = f.index;
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = f.display;
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = f.versions + (f.versions === 1 ? " version · " : " versions · ") + f.last_backup;
+
+    row.append(idx, name, meta);
+    if (!peek && !f.exists) {
+      const warn = document.createElement("span");
+      warn.className = "warn";
+      warn.title = "The original file is gone from disk — the backup is still here.";
+      warn.textContent = "missing on disk";
+      row.appendChild(warn);
+    }
+    box.appendChild(row);
+  }
+}
+
+function renderDetail() {
+  const box = document.getElementById("detail");
+  box.textContent = "";
+  if (!detail) {
+    document.getElementById("detailTitle").textContent = "Versions";
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "Select a file to see its history.";
+    box.appendChild(empty);
+    return;
+  }
+  document.getElementById("detailTitle").textContent = detail.display;
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const hrow = document.createElement("tr");
+  for (const h of ["#", "ID", "DATE", "SIZE", "COMMENT"]) {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hrow.appendChild(th);
+  }
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const s of detail.snapshots) {
+    const tr = document.createElement("tr");
+    if (s.version === detail.version) tr.className = "sel";
+    tr.onclick = function () { loadContent(s.version); };
+    for (const v of [s.version, s.short_id, s.timestamp, s.human_size, s.comment]) {
+      const td = document.createElement("td");
+      td.textContent = v;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  box.appendChild(table);
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+
+  actions.appendChild(mkButton("Copy", function () {
+    navigator.clipboard.writeText(detail.content)
+      .then(function () { toast("Copied version " + detail.version + " to the clipboard"); })
+      .catch(function (err) { toast(err.message, true); });
+  }));
+
+  if (!peek) {
+    actions.appendChild(mkButton("Restore in place", function () {
+      guard(async function () {
+        if (!confirm("Overwrite " + detail.display + " with version " + detail.version + "?")) return;
+        const res = await api("/api/restore", "POST", { file: selected, version: detail.version });
+        toast("Restored version " + detail.version + " to " + res.path);
+        await refresh();
+      });
+    }));
+  }
+
+  actions.appendChild(mkButton(peek ? "Save a copy to…" : "Restore to…", function () {
+    guard(async function () {
+      const path = await ask("Write version " + detail.version + " to",
+        "Absolute path, or ~/ for your home directory.");
+      if (!path) return;
+      if (peek) {
+        const res = await api("/api/peek/save", "POST",
+          { path: peek.path, file: selected, version: detail.version, out: path });
+        toast("Wrote " + res.out + " — your vault was not modified.");
+      } else {
+        const res = await api("/api/restore", "POST",
+          { file: selected, version: detail.version, path: path });
+        toast("Wrote " + res.path);
+      }
+    });
+  }));
+
+  if (!peek) {
+    actions.appendChild(mkButton("Forget file", function () {
+      guard(async function () {
+        if (!confirm("Stop tracking " + detail.display + " and delete its history?\nThe file on disk is left alone.")) return;
+        await api("/api/forget", "POST", { file: selected });
+        selected = null; detail = null;
+        toast("Stopped tracking. Run Reclaim space to free the disk.");
+        await refresh();
+      });
+    }, "danger"));
+  }
+  box.appendChild(actions);
+
+  const pre = document.createElement("pre");
+  pre.textContent = detail.content;
+  box.appendChild(pre);
+
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = peek
+    ? "Read-only view of the archive. Nothing here touches your vault."
+    : "Click any row above to view that version.";
+  box.appendChild(hint);
+}
+
+// --- data flow ---
+
+async function refresh() {
+  state = await api("/api/state");
+  renderState();
+  if (!peek) {
+    if (selected && !state.files.some(function (f) { return f.index === selected; })) {
+      selected = null; detail = null;
+    }
+    renderDetail();
+  }
+}
+
+function selectFile(index) {
+  selected = index;
+  renderFiles();
+  loadContent();
+}
+
+function loadContent(version) {
+  return guard(async function () {
+    if (peek) {
+      detail = await api("/api/peek/content", "POST",
+        { path: peek.path, file: selected, version: version || 0 });
+    } else {
+      const hist = await api("/api/history?file=" + selected);
+      const content = await api("/api/content?file=" + selected + (version ? "&version=" + version : ""));
+      detail = Object.assign({}, content, { snapshots: hist.snapshots });
+    }
+    renderDetail();
+  });
+}
+
+// --- toolbar ---
+
+document.getElementById("refreshBtn").onclick = function () { guard(refresh); };
+
+document.getElementById("scanBtn").onclick = function () {
+  guard(async function () {
+    const res = await api("/api/scan", "POST", {});
+    toast("Found " + res.found + " file(s) · " + res.backed + " new snapshot(s) · " + res.skipped + " unchanged");
+    await refresh();
+  });
+};
+
+document.getElementById("daemonBtn").onclick = function () {
+  guard(async function () {
+    const res = await api("/api/daemon", "POST", { action: state.daemon.running ? "stop" : "start" });
+    toast(res.running ? "Daemon running (pid " + res.pid + ")" : "Daemon stopped");
+    await refresh();
+  });
+};
+
+document.getElementById("watchBtn").onclick = function () {
+  guard(async function () {
+    const dir = await ask("Add a watch directory", "The daemon scans this directory for .env files.", "~/");
+    if (!dir) return;
+    const res = await api("/api/watch", "POST", { dir: dir });
+    toast("Now watching " + res.dir);
+    await refresh();
+  });
+};
+
+document.getElementById("gcBtn").onclick = function () {
+  guard(async function () {
+    const res = await api("/api/gc", "POST", {});
+    toast("Removed " + res.removed + " unreferenced blob(s), freed " + res.human_freed);
+    await refresh();
+  });
+};
+
+document.getElementById("exportBtn").onclick = function () {
+  guard(async function () {
+    const res = await fetch("/api/export", { headers: { "X-Envault-Token": TOKEN } });
+    if (!res.ok) throw new Error("export failed: " + res.status + " " + res.statusText);
+    const match = (res.headers.get("Content-Disposition") || "").match(/filename="?([^"]+)"?/);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = match ? match[1] : "envault-backup.zip";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("Downloaded " + a.download);
+  });
+};
+
+document.getElementById("importBtn").onclick = function () {
+  guard(async function () {
+    const path = await ask("Import a vault zip", "Path to a zip made by Export. This replaces your current vault.");
+    if (!path) return;
+    const force = confirm("Overwrite the existing vault at " + state.vault_dir + "?\nOK = overwrite · Cancel = only import if the vault is empty.");
+    const res = await api("/api/import", "POST", { path: path, force: force });
+    toast("Imported " + res.files + " file(s)");
+    await refresh();
+  });
+};
+
+document.getElementById("peekBtn").onclick = function () {
+  guard(async function () {
+    const path = await ask("Peek inside a zip", "Read-only. Nothing is written to your vault.");
+    if (!path) return;
+    const res = await api("/api/peek", "POST", { path: path });
+    peek = { path: path, files: res.files };
+    selected = null; detail = null;
+    renderFiles(); renderDetail();
+    toast("Browsing " + path + " read-only");
+  });
+};
+
+document.getElementById("settingsBtn").onclick = function () {
+  document.getElementById("intervalInput").value = state.config.scan_interval_secs;
+  document.getElementById("maxVersionsInput").value = state.config.max_versions;
+  document.getElementById("watchDirsInput").value = (state.config.watch_dirs || []).join("\n");
+  document.getElementById("settings").showModal();
+};
+
+document.getElementById("settings").addEventListener("close", function () {
+  if (this.returnValue !== "ok") return;
+  guard(async function () {
+    await api("/api/config", "POST", {
+      scan_interval_secs: Number(document.getElementById("intervalInput").value),
+      max_versions: Number(document.getElementById("maxVersionsInput").value),
+      watch_dirs: document.getElementById("watchDirsInput").value
+        .split("\n").map(function (s) { return s.trim(); }).filter(Boolean),
+    });
+    toast("Settings saved. Restart the daemon to pick up a new interval.");
+    await refresh();
+  });
+});
+
+guard(refresh);
+</script>
+</body>
+</html>
