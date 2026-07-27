@@ -437,6 +437,24 @@ func TestMethodNotAllowed(t *testing.T) {
 	}
 }
 
+// The page ships inside the binary and must render with no network at all.
+func TestPageIsSelfContained(t *testing.T) {
+	for _, forbidden := range []string{"src=\"http", "href=\"http", "@import", "cdn."} {
+		if strings.Contains(indexHTML, forbidden) {
+			t.Errorf("page reaches outside the binary: found %q", forbidden)
+		}
+	}
+}
+
+// Values from .env files flow into the page, so nothing may be parsed as markup.
+func TestPageNeverAssignsInnerHTML(t *testing.T) {
+	for _, forbidden := range []string{"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"} {
+		if strings.Contains(indexHTML, forbidden) {
+			t.Errorf("page builds markup from strings: found %q", forbidden)
+		}
+	}
+}
+
 func TestNewTokenIsRandomAndOpaque(t *testing.T) {
 	a, err := NewToken()
 	if err != nil {
