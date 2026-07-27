@@ -30,6 +30,7 @@ cmd/
   daemon.go                      — start, stop, status, watch commands
   install.go                     — install, uninstall commands
   transfer.go                    — export, import commands
+  peek.go                        — peek command (read-only archive browsing)
   upgrade.go                     — version, upgrade commands
   ui.go                          — ui command
 internal/
@@ -40,6 +41,8 @@ internal/
   daemon/daemon.go               — background loop, PID management
   daemon/service.go              — launchd/systemd service install
   setup/setup.go                 — interactive install wizard (3-step BubbleTea)
+  transfer/transfer.go           — vault export/import (zip)
+  transfer/archive.go            — read-only reader for an export zip (used by peek)
   tui/tui.go                     — interactive TUI browser (3-view BubbleTea state machine)
 cmd/maintenance.go               — gc, forget commands
 .github/workflows/release.yml   — CI/CD: build + publish on v* tags
@@ -72,6 +75,7 @@ make clean
 | `uninstall` | `--prune` | Remove OS service (optionally delete all data) |
 | `export` | `-o` path | Export vault as zip |
 | `import <zip>` | `--force` | Import vault from zip |
+| `peek <zip> [file\|#]` | `-v` version, `--show`, `-o` path, `--force` | Browse an export zip read-only; never writes to the vault |
 | `upgrade` | — | Self-update from GitHub |
 | `version` | — | Print version + credits |
 | `ui` | — | Launch interactive TUI |
