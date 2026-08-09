@@ -60,7 +60,8 @@ install.sh                       — curl-able installer that fetches a release 
 ```bash
 make build     # go build with -ldflags injecting cmd.Version + cmd.BuildDate → ./envault
 make test      # go test ./...
-make install   # build, then sudo cp to /usr/local/bin/
+make install   # build, then install into $(INSTALL_DIR), default /usr/local/bin
+make uninstall # remove the binary from $(INSTALL_DIR)
 make run       # build, then ./envault scan .
 make clean     # rm -f ./envault
 ```
@@ -68,6 +69,13 @@ make clean     # rm -f ./envault
 `VERSION` defaults to `git describe --tags --always --dirty`, falling back to `dev`. A plain
 `go build .` produces a binary reporting version `dev` — use `make build` when the version
 string matters.
+
+`install`/`uninstall` create `$(INSTALL_DIR)` if it is missing (a stock macOS has no
+`/usr/local/bin`, and copying into a missing directory fails with a bare "No such file or
+directory") and reach for `sudo` only when the nearest existing ancestor isn't writable —
+so `make install INSTALL_DIR=$HOME/.local/bin` never leaves root-owned files. `install.sh`
+follows the same rules, keyed off `ENVAULT_INSTALL_DIR`, and verifies the download against
+the release `checksums.txt` before writing anything.
 
 ## Commands
 
