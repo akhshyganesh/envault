@@ -25,6 +25,29 @@ func TestLoadWithoutAFileReturnsDefaults(t *testing.T) {
 	}
 }
 
+// A wizard quit half way, or a bare 'envault start', creates the vault
+// directory without a config. That must still count as unconfigured, or the
+// first-run wizard is never offered again.
+func TestIsConfiguredIgnoresABareVaultDirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	if IsConfigured() {
+		t.Error("IsConfigured on an empty home, want false")
+	}
+	if err := os.MkdirAll(BlobsDir(), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if IsConfigured() {
+		t.Error("IsConfigured with a vault directory but no config, want false")
+	}
+	if err := DefaultConfig().Save(); err != nil {
+		t.Fatal(err)
+	}
+	if !IsConfigured() {
+		t.Error("IsConfigured after Save, want true")
+	}
+}
+
 func TestSaveThenLoadRoundTrips(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

@@ -27,10 +27,10 @@ var rootCmd = &cobra.Command{
 	Use:          "envault",
 	Short:        "envault — your .env files, safely vaulted",
 	SilenceUsage: true,
-	// Bare `envault` is the front door: the wizard if there is no vault yet,
-	// the browser if there is.
+	// Bare `envault` is the front door: the wizard until setup has been
+	// completed, the browser after.
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := os.Stat(config.VaultDir()); os.IsNotExist(err) {
+		if !config.IsConfigured() {
 			return setup.Run()
 		}
 		return tui.Run()

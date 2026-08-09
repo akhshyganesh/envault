@@ -2,17 +2,12 @@
 
 **Your `.env` files, safely vaulted.**
 
-envault finds every `.env` file on your machine, versions it, and keeps backing it
-up in the background. Content is stored by SHA-256 hash, so identical files are
+envault finds every `.env` file on your machine, versions it, and keeps backing
+it up in the background. Content is addressed by SHA-256, so identical files are
 stored once and an unchanged file costs nothing to re-scan.
 
-## Why
-
-Environment files hold your secrets — API keys, database passwords, tokens. They
-are excluded from git by design, which means no history, no backup, and no way
-back when one gets clobbered.
-
-envault fixes all three, quietly.
+Your secrets live in files git is told to ignore — no history, no backup, no way
+back when one gets clobbered. envault fixes that, quietly.
 
 ## Install
 
@@ -20,26 +15,23 @@ envault fixes all three, quietly.
 curl -fsSL https://raw.githubusercontent.com/akhshyganesh/envault/develop/install.sh | sh
 ```
 
-This detects your OS and architecture, verifies the download against the release
-checksums, and installs to `/usr/local/bin` — creating that directory if your
-system doesn't have one (a stock macOS doesn't). You'll be asked for your sudo
-password.
+Detects your OS and architecture, verifies the download against the release
+checksums, and installs to `/usr/local/bin` — creating it if missing, as on a
+stock macOS. Asks for sudo.
 
-To install somewhere you own and skip sudo entirely:
+To skip sudo, install somewhere you own:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/akhshyganesh/envault/develop/install.sh \
   | ENVAULT_INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
-**From source** (Go 1.26+):
+From source (Go 1.26+):
 
 ```bash
 git clone https://github.com/akhshyganesh/envault.git && cd envault
-make build && make install
+make build && make install    # honours INSTALL_DIR too
 ```
-
-`make install` honours the same override: `make install INSTALL_DIR="$HOME/.local/bin"`.
 
 ## Quick start
 
@@ -47,41 +39,35 @@ make build && make install
 envault
 ```
 
-On first run that walks you through setup — which folders to watch, how often to
-check, and whether to start on login — then takes a first backup. After that,
-plain `envault` opens the browser of your backups. Re-run the wizard any time
-with `envault install`.
+First run opens the setup wizard: pick the folders to watch and a scan interval,
+and it takes a first backup and registers itself to start at login. After that,
+plain `envault` opens the terminal UI. Re-run the wizard any time with
+`envault install`.
+
+Installing the binary alone doesn't start anything — the login service comes
+from the wizard. Check it with `envault status`.
 
 ## Interfaces
 
-There are three, and they do the same things.
+Three, all doing the same things.
 
-**Terminal UI** — `envault` or `envault ui`. A warm amber accent on neutral
-grays, breadcrumbs (`envault › ~/app/.env › v3`), and a status bar where every
-shortcut key is highlighted.
+**Terminal UI** — `envault` or `envault ui`.
 
 - `↑↓`/`jk` move · `Enter`/`→` open · `Esc`/`←` back · `g`/`G` top/bottom · `q` quit
 - Files: `s` scan · `d` toggle the daemon · `w` watch a folder · `e` export · `i` import
 - Versions: `r` restore in place · `R` restore to a path
 - Contents: `c` copy · `r` restore · `R` restore to a path
 
-**Browser UI** — `envault web`.
+**Browser UI** — `envault web` (`--port`, `--no-open`).
 
-```bash
-envault web                      # opens http://127.0.0.1:7391
-envault web --port 8080 --no-open
-```
+Each version renders as a ledger of `KEY → value`, masked until you reveal them
+— one row at a time, or `r` for all. Keys added or changed since the previous
+version are marked, so you can see what a snapshot actually did. `t` shows the
+verbatim file, `/` filters, `?` lists every key.
 
-Each version renders as a ledger of `KEY → value` rather than a wall of text.
-Values are masked until you reveal them — one row at a time, or `r` for all —
-and keys added or changed since the previous version are marked, so you can see
-what a snapshot actually did. `t` shows the verbatim file, `/` filters, `?` lists
-every key.
-
-It binds `127.0.0.1` only, rejects any request whose `Host` isn't loopback, and
-needs the one-time token from the URL it prints. It does serve your `.env`
-contents in the clear over local HTTP, so leave it running only while you're
-using it, and press Ctrl+C when you're done.
+It binds `127.0.0.1`, rejects any request whose `Host` isn't loopback, and needs
+the one-time token from the URL it prints. It does serve your secrets in the
+clear over local HTTP — leave it running only while you're using it.
 
 **Command line** — everything below.
 
@@ -98,8 +84,9 @@ using it, and press Ctrl+C when you're done.
 | `forget <file\|#>` | Stop tracking a file and delete its history |
 | `gc` | Reclaim disk space by deleting unreferenced content |
 | `watch <dir>` | Add a directory to the watch list |
-| `start` / `stop` / `status` | Control the background daemon |
-| `install` | Interactive setup, including the OS startup service |
+| `start` / `stop` | Run or stop the background daemon |
+| `status` | Daemon, login service and watch list at a glance |
+| `install` | Interactive setup, including the login service |
 | `uninstall [--prune] [--all]` | Remove the service, and optionally the backups and the binary |
 | `export [-o file.zip]` | Export the whole vault as a zip |
 | `import <file.zip> [--force]` | Restore a vault from a zip |
@@ -109,20 +96,19 @@ using it, and press Ctrl+C when you're done.
 | `ui` | Browse backups in the terminal |
 | `web [-p port] [--no-open]` | Serve the browser UI on localhost |
 
-Anywhere a file is expected you can pass the `#` from `envault list` instead of a
-path.
+Anywhere a file is expected you can pass the `#` from `envault list` instead of
+a path.
 
-### Removing envault
+## Removing envault
 
 ```bash
-envault uninstall           # stops the daemon and removes the startup service,
-                            # then asks about your backups and the binary
-envault uninstall --prune   # service and backups, keeps the binary
+envault uninstall           # service only; then asks about backups and the binary
+envault uninstall --prune   # service and backups
 envault uninstall --all     # service, backups and the binary
 ```
 
 Nothing is deleted without being asked for, and whatever survives is named at
-the end — so if it says "fully uninstalled", nothing is left behind.
+the end — so "fully uninstalled" never means less than it says.
 
 ## How it works
 
@@ -135,11 +121,10 @@ the end — so if it says "fully uninstalled", nothing is left behind.
 └── envault.log      — daemon log (runtime)
 ```
 
-1. The **scanner** walks your watch directories for `.env`, `.env.*` and `*.env`,
-   skipping `node_modules`, `.git`, `vendor`, `dist`, `build` and similar noise.
-2. The **store** hashes each file. Same content, same hash, same blob — identical
-   files are never stored twice, and an unchanged file creates no new version.
-3. The **daemon** repeats that every 60 seconds by default.
+The scanner walks your watch directories for `.env`, `.env.*` and `*.env`,
+skipping `node_modules`, `.git`, `vendor`, `dist`, `build` and similar. The store
+hashes each file — same content, same hash, same blob, no new version. The
+daemon repeats that every 60 seconds by default.
 
 ## Configuration
 
@@ -155,24 +140,23 @@ the end — so if it says "fully uninstalled", nothing is left behind.
 
 Edit it directly, use `envault watch <dir>`, or open Settings in the browser UI.
 
-- `max_versions: 0` keeps unlimited history. A positive number keeps only the N
+- `max_versions: 0` keeps unlimited history. A positive number keeps the N
   newest versions per file; older ones are dropped on the next backup.
 - Dropping a version doesn't free disk space, because the same content may be
   shared with another file. Run `envault gc` to reclaim it.
+- Keep the watch list to the folders you actually keep code in. Pointing it at
+  your whole home directory makes the daemon walk macOS-protected folders it
+  can never read, and the log fills with permission warnings.
 
 ## Moving between machines
 
 ```bash
-# before wiping the old machine
-envault export -o ~/backup.zip
-
-# on the new one
-envault import ~/backup.zip
-envault list
+envault export -o ~/backup.zip    # before wiping the old machine
+envault import ~/backup.zip       # on the new one
 ```
 
-Need one file out of a backup without importing the whole thing? `peek` reads
-the zip in place and never touches `~/.envault`:
+Need one file out of a backup without importing it? `peek` reads the zip in
+place and never touches `~/.envault`:
 
 ```bash
 envault peek ~/backup.zip                 # what's inside

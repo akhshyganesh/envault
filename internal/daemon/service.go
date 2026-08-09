@@ -37,6 +37,29 @@ func Install() (string, error) {
 	}
 }
 
+// ServiceInstalled reports whether the startup service is registered, and the
+// file that would hold it. Callers use the path to tell the user where to look
+// even when the answer is no.
+func ServiceInstalled() (bool, string) {
+	path := servicePath()
+	if path == "" {
+		return false, ""
+	}
+	_, err := os.Stat(path)
+	return err == nil, path
+}
+
+func servicePath() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return launchdPlistPath()
+	case "linux":
+		return systemdUnitPath()
+	default:
+		return ""
+	}
+}
+
 // Uninstall removes the startup service registration.
 func Uninstall() (string, error) {
 	switch runtime.GOOS {

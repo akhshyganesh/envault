@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -43,14 +44,39 @@ var stopCmd = &cobra.Command{
 	},
 }
 
+// statusCmd answers three separate questions, because a running daemon says
+// nothing about whether envault survives a reboot — and someone who ran
+// 'envault start' by hand would otherwise be told everything is fine.
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Report whether the daemon is running",
+	Short: "Report the daemon, the login service and the watch list",
 	Run: func(cmd *cobra.Command, args []string) {
-		if running, pid := daemon.IsRunning(); running {
-			fmt.Printf("envault daemon is running (PID %d)\n", pid)
+		running, pid := daemon.IsRunning()
+		if running {
+			done("Daemon running (PID %d)", pid)
 		} else {
-			fmt.Println("envault daemon is not running")
+			note("Daemon not running")
+		}
+
+		installed, path := daemon.ServiceInstalled()
+		if installed {
+			done("Starts at login (%s)", format.ShortenPath(path))
+		} else {
+			note("Will not start at login")
+		}
+
+		if !config.IsConfigured() {
+			note("No watch list — envault is scanning your whole home directory")
+		} else if cfg, err := config.Load(); err == nil {
+			dirs := make([]string, len(cfg.WatchDirs))
+			for i, d := range cfg.WatchDirs {
+				dirs[i] = format.ShortenPath(d)
+			}
+			done("Watching %s every %ds", strings.Join(dirs, ", "), cfg.ScanIntervalSecs)
+		}
+
+		if !installed || !config.IsConfigured() {
+			fmt.Println("\nRun 'envault install' to finish setup.")
 		}
 	},
 }

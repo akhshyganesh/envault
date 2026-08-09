@@ -106,7 +106,8 @@ leaves root-owned files. `install.sh` follows the same rules via
 | `forget <file\|#>` | — | Stop tracking, delete history |
 | `gc` | — | Delete unreferenced blobs |
 | `watch <dir>` | — | Add to the watch list |
-| `start` / `stop` / `status` | — | Control the daemon |
+| `start` / `stop` | — | Run or stop the daemon |
+| `status` | — | Daemon, login service and watch list |
 | `install` | — | Setup wizard |
 | `uninstall` | `--prune`, `--all` | Remove the service; optionally the data and the binary |
 | `export` | `-o/--output` | Vault → zip |
@@ -148,6 +149,9 @@ derives from `os.UserHomeDir()` — so a test relocates the entire vault with
 - **Best-effort exec**: `_ = exec.Command(...).Run()` with a comment saying why.
 - **Libraries don't print.** `internal/daemon` returns strings for the caller to
   display; a stray `Println` corrupts a BubbleTea alternate screen.
+- **First run keys on `config.json`** (`config.IsConfigured`), never on the vault
+  directory: an abandoned wizard or a bare `envault start` creates the directory,
+  and keying on it would retire the wizard forever.
 - **Env patterns**: `.env`, `.env.*`, `*.env`.
 - **Skipped dirs**: `node_modules`, `.git`, `.svn`, `.hg`, `vendor`,
   `__pycache__`, `.venv`, `venv`, `.tox`, `dist`, `build`, `.envault`.

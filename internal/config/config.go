@@ -27,6 +27,15 @@ func DefaultConfig() *Config {
 	}
 }
 
+// IsConfigured reports whether setup has been completed. It keys on the
+// settings file, not the vault directory: a wizard quit half way, or a bare
+// 'envault start', leaves the directory behind with no config, and keying on
+// the directory would mean the wizard is never offered again.
+func IsConfigured() bool {
+	_, err := os.Stat(ConfigPath())
+	return err == nil
+}
+
 // Load reads the settings file, falling back to defaults when it is absent.
 // Unset fields keep their default, so a partial config.json stays valid.
 func Load() (*Config, error) {

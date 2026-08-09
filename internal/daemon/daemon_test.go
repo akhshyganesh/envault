@@ -111,6 +111,28 @@ func TestServiceFileIsReadableByTheServiceManager(t *testing.T) {
 	}
 }
 
+// A running daemon says nothing about surviving a reboot, so 'envault status'
+// asks this separately.
+func TestServiceInstalledTracksTheServiceFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	installed, path := ServiceInstalled()
+	if installed {
+		t.Error("ServiceInstalled on a fresh home, want false")
+	}
+	if path == "" {
+		t.Fatal("ServiceInstalled returned no path to report")
+	}
+
+	ctx := serviceContext{BinaryPath: "/usr/local/bin/envault", LogPath: "/tmp/envault.log"}
+	if err := writeServiceFile(path, launchdPlist, ctx); err != nil {
+		t.Fatalf("writeServiceFile: %v", err)
+	}
+	if installed, _ := ServiceInstalled(); !installed {
+		t.Error("ServiceInstalled after writing the service file, want true")
+	}
+}
+
 func TestLaunchdPlistRendersTheBinaryAndLog(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "com.envault.daemon.plist")
 	ctx := serviceContext{BinaryPath: "/opt/envault", LogPath: "/tmp/envault.log"}
