@@ -1,260 +1,112 @@
+// Package store is the content-addressed backup store: file bytes live in
+// blobs/ under the SHA-256 of their content, and index/ records which snapshot
+// of which file points at which blob.
+//
+// Content addressing gives deduplication for free — the same .env copied into
+// ten projects occupies one blob — and makes "did this file change?" a hash
+// comparison rather than a diff.
 package store
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/akhshyganesh/envault/internal/config"
 )
 
-// Snapshot represents one versioned backup of an env file.
-type Snapshot struct {
-	ID        string    `json:"id"`        // SHA-256 of content
-	Timestamp time.Time `json:"timestamp"` // When this snapshot was taken
-	FilePath  string    `json:"file_path"` // Original absolute path of the env file
-	Size      int64     `json:"size"`      // File size in bytes
-	Comment   string    `json:"comment"`   // Optional comment (e.g., "auto" or user-provided)
-}
-
-// FileHistory holds all snapshots for a single env file.
-type FileHistory struct {
-	FilePath  string     `json:"file_path"`
-	Snapshots []Snapshot `json:"snapshots"`
-}
-
-// Store is the versioned backup store for env files.
+// Store reads and writes the vault. It holds no state beyond its paths, so it
+// is cheap to construct and safe to share.
 type Store struct {
-	baseDir  string // ~/.envault
-	blobDir  string // ~/.envault/blobs   (content-addressed storage)
-	indexDir string // ~/.envault/index    (per-file history)
+	blobDir  string
+	indexDir string
 }
 
-// NewStore creates or opens the store.
+// NewStore opens the vault, creating its directories if this is a first run.
 func NewStore() (*Store, error) {
-	base := config.VaultDir()
-	s := &Store{
-		baseDir:  base,
-		blobDir:  filepath.Join(base, "blobs"),
-		indexDir: filepath.Join(base, "index"),
-	}
-	for _, d := range []string{s.blobDir, s.indexDir} {
-		if err := os.MkdirAll(d, 0700); err != nil {
-			return nil, fmt.Errorf("failed to create store dir %s: %w", d, err)
+	s := &Store{blobDir: config.BlobsDir(), indexDir: config.IndexDir()}
+	for _, dir := range []string{s.blobDir, s.indexDir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return nil, fmt.Errorf("creating %s: %w", dir, err)
 		}
 	}
 	return s, nil
 }
 
-// hashContent returns the hex SHA-256 of data.
-func hashContent(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
+func (s *Store) blobPath(id string) string {
+	return filepath.Join(s.blobDir, id)
 }
 
-// fileKey converts an absolute file path to a safe filename for the index.
-func fileKey(absPath string) string {
-	h := sha256.Sum256([]byte(absPath))
-	return hex.EncodeToString(h[:16]) // 16 bytes = 32 hex chars, enough to avoid collisions
-}
-
-// SaveSnapshot reads an env file, stores its content, and records a snapshot.
-// Returns the snapshot and whether the content was new (not a duplicate of the latest).
-func (s *Store) SaveSnapshot(envFilePath string, comment string) (*Snapshot, bool, error) {
+// SaveSnapshot records the current contents of an env file. The bool reports
+// whether this created a new version; re-saving unchanged content is a no-op
+// that returns the existing snapshot, which is what makes a 60-second polling
+// daemon cheap.
+func (s *Store) SaveSnapshot(envFilePath, comment string) (*Snapshot, bool, error) {
 	absPath, err := filepath.Abs(envFilePath)
 	if err != nil {
 		return nil, false, err
 	}
-
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, false, err
 	}
 
-	contentHash := hashContent(data)
+	sum := sha256.Sum256(data)
+	id := hex.EncodeToString(sum[:])
 
-	// Check if latest snapshot already has same content (skip duplicate)
-	history, _ := s.GetHistory(absPath)
-	if len(history.Snapshots) > 0 {
-		latest := history.Snapshots[len(history.Snapshots)-1]
-		if latest.ID == contentHash {
-			return &latest, false, nil
-		}
+	history, err := s.History(absPath)
+	if err != nil {
+		return nil, false, err
+	}
+	if latest := history.Latest(); latest != nil && latest.ID == id {
+		return latest, false, nil
 	}
 
-	// Store blob. Content-addressed: if a blob with this hash already exists
-	// (same content seen elsewhere), its bytes are identical, so skip the write.
-	blobPath := filepath.Join(s.blobDir, contentHash)
-	if _, statErr := os.Stat(blobPath); os.IsNotExist(statErr) {
-		if err := os.WriteFile(blobPath, data, 0600); err != nil {
-			return nil, false, err
+	// A blob's name is its content hash, so an existing file with this name
+	// already holds exactly these bytes and does not need rewriting.
+	if _, err := os.Stat(s.blobPath(id)); os.IsNotExist(err) {
+		if err := os.WriteFile(s.blobPath(id), data, 0600); err != nil {
+			return nil, false, fmt.Errorf("storing content: %w", err)
 		}
 	}
 
 	snap := Snapshot{
-		ID:        contentHash,
+		ID:        id,
 		Timestamp: time.Now().UTC(),
 		FilePath:  absPath,
 		Size:      int64(len(data)),
 		Comment:   comment,
 	}
-
 	history.Snapshots = append(history.Snapshots, snap)
-	s.pruneHistory(history)
-	if err := s.saveHistory(history); err != nil {
-		return nil, false, err
+	prune(history)
+	if err := s.writeHistory(history); err != nil {
+		return nil, false, fmt.Errorf("recording snapshot: %w", err)
 	}
-
 	return &snap, true, nil
 }
 
-// pruneHistory trims a file's snapshot list to config.MaxVersions, keeping the
-// most recent ones. MaxVersions <= 0 means unlimited (no pruning).
-func (s *Store) pruneHistory(h *FileHistory) {
-	cfg, err := config.Load()
-	if err != nil || cfg.MaxVersions <= 0 {
-		return
-	}
-	if len(h.Snapshots) > cfg.MaxVersions {
-		h.Snapshots = h.Snapshots[len(h.Snapshots)-cfg.MaxVersions:]
-	}
-}
-
-// GetHistory returns all snapshots for a given env file path.
-func (s *Store) GetHistory(absPath string) (*FileHistory, error) {
-	key := fileKey(absPath)
-	indexPath := filepath.Join(s.indexDir, key+".json")
-
-	data, err := os.ReadFile(indexPath)
+// Content returns the stored bytes of a snapshot.
+func (s *Store) Content(snapshotID string) ([]byte, error) {
+	data, err := os.ReadFile(s.blobPath(snapshotID))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return &FileHistory{FilePath: absPath}, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("snapshot content not found: %w", err)
 	}
-
-	var h FileHistory
-	if err := json.Unmarshal(data, &h); err != nil {
-		return nil, err
-	}
-	return &h, nil
+	return data, nil
 }
 
-// saveHistory writes the history index for a file.
-func (s *Store) saveHistory(h *FileHistory) error {
-	key := fileKey(h.FilePath)
-	indexPath := filepath.Join(s.indexDir, key+".json")
-	data, err := json.MarshalIndent(h, "", "  ")
+// Restore writes a snapshot's content to a path, creating parent directories.
+// The result is a secret on disk, so it is written 0600 like everything else
+// envault produces.
+func (s *Store) Restore(absPath, snapshotID string) error {
+	data, err := s.Content(snapshotID)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(indexPath, data, 0600)
-}
-
-// RestoreSnapshot restores a specific snapshot back to its original path.
-func (s *Store) RestoreSnapshot(absPath string, snapshotID string) error {
-	blobPath := filepath.Join(s.blobDir, snapshotID)
-	data, err := os.ReadFile(blobPath)
-	if err != nil {
-		return fmt.Errorf("snapshot blob not found: %w", err)
-	}
-
 	if err := os.MkdirAll(filepath.Dir(absPath), 0700); err != nil {
 		return err
 	}
-
 	return os.WriteFile(absPath, data, 0600)
-}
-
-// GetBlobContent returns the raw content of a snapshot.
-func (s *Store) GetBlobContent(snapshotID string) ([]byte, error) {
-	blobPath := filepath.Join(s.blobDir, snapshotID)
-	return os.ReadFile(blobPath)
-}
-
-// ListTrackedFiles returns all tracked file paths and their latest snapshot.
-func (s *Store) ListTrackedFiles() ([]FileHistory, error) {
-	entries, err := os.ReadDir(s.indexDir)
-	if err != nil {
-		return nil, err
-	}
-
-	var results []FileHistory
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(s.indexDir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var h FileHistory
-		if err := json.Unmarshal(data, &h); err != nil {
-			continue
-		}
-		results = append(results, h)
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].FilePath < results[j].FilePath
-	})
-	return results, nil
-}
-
-// GCResult reports what a garbage-collection pass reclaimed.
-type GCResult struct {
-	Removed int   // number of orphaned blobs deleted
-	Freed   int64 // total bytes reclaimed
-}
-
-// GC removes blobs that are no longer referenced by any snapshot. Orphans
-// accumulate when version pruning trims old snapshots or tracked files are
-// forgotten.
-func (s *Store) GC() (*GCResult, error) {
-	files, err := s.ListTrackedFiles()
-	if err != nil {
-		return nil, err
-	}
-
-	referenced := make(map[string]bool)
-	for _, f := range files {
-		for _, snap := range f.Snapshots {
-			referenced[snap.ID] = true
-		}
-	}
-
-	entries, err := os.ReadDir(s.blobDir)
-	if err != nil {
-		return nil, err
-	}
-
-	res := &GCResult{}
-	for _, entry := range entries {
-		if entry.IsDir() || referenced[entry.Name()] {
-			continue
-		}
-		blobPath := filepath.Join(s.blobDir, entry.Name())
-		if info, statErr := os.Stat(blobPath); statErr == nil {
-			if err := os.Remove(blobPath); err == nil {
-				res.Removed++
-				res.Freed += info.Size()
-			}
-		}
-	}
-	return res, nil
-}
-
-// Forget removes all tracked history for a file. Blobs are left for GC to
-// reclaim (they may be shared with other files via content addressing).
-func (s *Store) Forget(absPath string) error {
-	indexPath := filepath.Join(s.indexDir, fileKey(absPath)+".json")
-	if err := os.Remove(indexPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
 }

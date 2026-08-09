@@ -1,4 +1,5 @@
-// Package format provides shared display formatting for CLI and TUI output.
+// Package format holds the display helpers shared by the CLI, the TUI and the
+// web API, so a path or a size reads the same wherever it is printed.
 package format
 
 import (
@@ -10,26 +11,29 @@ import (
 	"time"
 )
 
-// homeDir caches the user's home directory; it never changes during a run and
-// ShortenPath is called for every row on every TUI render.
+// homeDir is cached: it cannot change during a run, and ShortenPath is called
+// once per row on every TUI render.
 var homeDir = sync.OnceValue(func() string {
 	h, _ := os.UserHomeDir()
 	return h
 })
 
-// ExpandPath expands a leading ~/ to the user's home directory and resolves to absolute.
+// ExpandPath resolves a leading ~ to the user's home directory and returns an
+// absolute path.
 func ExpandPath(p string) (string, error) {
-	if strings.HasPrefix(p, "~/") || p == "~" {
+	if p == "~" || strings.HasPrefix(p, "~/") {
 		home := homeDir()
 		if home == "" {
 			return "", fmt.Errorf("cannot resolve home directory")
 		}
-		p = filepath.Join(home, p[1:]) // p[1:] keeps the / or is empty for bare ~
+		// p[1:] keeps the separator, and is empty for a bare "~".
+		p = filepath.Join(home, p[1:])
 	}
 	return filepath.Abs(p)
 }
 
-// ShortenPath replaces the home directory prefix with ~.
+// ShortenPath is the inverse of ExpandPath for display: it abbreviates the
+// home directory back to "~".
 func ShortenPath(p string) string {
 	home := homeDir()
 	if home != "" && strings.HasPrefix(p, home) {
@@ -38,7 +42,7 @@ func ShortenPath(p string) string {
 	return p
 }
 
-// TimeAgo formats a time as a human-readable relative string (e.g. "5m ago").
+// TimeAgo renders a timestamp as a coarse relative age, e.g. "5m ago".
 func TimeAgo(t time.Time) string {
 	d := time.Since(t)
 	switch {
@@ -53,7 +57,7 @@ func TimeAgo(t time.Time) string {
 	}
 }
 
-// HumanSize formats a byte count as a human-readable string (e.g. "1.4KB").
+// HumanSize renders a byte count as e.g. "1.4KB".
 func HumanSize(b int64) string {
 	switch {
 	case b < 1024:

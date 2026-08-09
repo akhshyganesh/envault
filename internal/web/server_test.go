@@ -18,8 +18,8 @@ import (
 
 const testToken = "test-token-0123456789"
 
-// newTestServer points the vault at a temp HOME, seeds it with the given
-// env files, and returns the handler plus the sandbox root.
+// newTestServer relocates the vault into a temp HOME, seeds it with env files,
+// and returns the handler plus the sandbox root.
 func newTestServer(t *testing.T, envFiles map[string]string) (http.Handler, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -52,7 +52,7 @@ func newTestServer(t *testing.T, envFiles map[string]string) (http.Handler, stri
 	return srv.Handler(), root
 }
 
-// do issues an authenticated request against the handler.
+// do issues an authenticated request from a loopback Host.
 func do(t *testing.T, h http.Handler, method, target string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	var r io.Reader
@@ -66,12 +66,12 @@ func do(t *testing.T, h http.Handler, method, target string, body any) *httptest
 	req := httptest.NewRequest(method, target, r)
 	req.Host = "127.0.0.1:7391"
 	req.Header.Set(tokenHeader, testToken)
+
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
 }
 
-// decode unmarshals a JSON response body, failing on a non-200 status.
 func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 	t.Helper()
 	if rec.Code != http.StatusOK {
@@ -99,10 +99,13 @@ type stateResp struct {
 		Path     string `json:"path"`
 		Display  string `json:"display"`
 		Versions int    `json:"versions"`
+		Exists   bool   `json:"exists"`
 	} `json:"files"`
 }
 
-func TestAPIRequiresToken(t *testing.T) {
+// ── Access control ───────────────────────────────────────────────────────────
+
+func TestAPIRequiresTheSessionToken(t *testing.T) {
 	h, _ := newTestServer(t, nil)
 
 	for _, tc := range []struct{ name, token string }{
@@ -124,7 +127,9 @@ func TestAPIRequiresToken(t *testing.T) {
 	}
 }
 
-func TestRejectsNonLocalHost(t *testing.T) {
+// A hostile page could point a DNS name at 127.0.0.1; the Host check is what
+// stops it reaching the API from the victim's browser.
+func TestRejectsANonLoopbackHost(t *testing.T) {
 	h, _ := newTestServer(t, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/state", nil)
@@ -132,36 +137,82 @@ func TestRejectsNonLocalHost(t *testing.T) {
 	req.Header.Set(tokenHeader, testToken)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("want 403 for a non-local Host header, got %d", rec.Code)
+		t.Fatalf("want 403 for a non-loopback Host, got %d", rec.Code)
 	}
 }
 
-func TestIndexPageRequiresTokenAndEmbedsIt(t *testing.T) {
+func TestPageNeedsATokenAndNeverEmbedsOne(t *testing.T) {
 	h, _ := newTestServer(t, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Host = "127.0.0.1:7391"
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
+	get := func(target string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.Host = "127.0.0.1:7391"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := get("/"); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 without a token, got %d", rec.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/?token="+testToken, nil)
-	req.Host = "127.0.0.1:7391"
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	rec := get("/?token=" + testToken)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200 with a token, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), testToken) {
-		t.Fatal("page does not carry the session token to the client")
+	// The page reads the token from the URL, so it must never be baked into
+	// the served bytes — otherwise a cached copy would carry the session.
+	if strings.Contains(rec.Body.String(), testToken) {
+		t.Fatal("the served page contains the session token")
 	}
-	if strings.Contains(rec.Body.String(), tokenPlaceholder) {
-		t.Fatal("token placeholder was not substituted")
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", cc)
 	}
 }
+
+// The stylesheet and script hold no vault data, and the page cannot present a
+// token when the browser fetches them.
+func TestStaticAssetsAreServedWithoutAToken(t *testing.T) {
+	h, _ := newTestServer(t, nil)
+
+	for path, wantType := range map[string]string{
+		"/app.css": "text/css",
+		"/app.js":  "text/javascript",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "127.0.0.1:7391"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", path, rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, wantType) {
+			t.Errorf("%s: Content-Type = %q, want %s", path, ct, wantType)
+		}
+		if rec.Body.Len() == 0 {
+			t.Errorf("%s: served no bytes", path)
+		}
+	}
+}
+
+func TestNewTokenIsRandomAndLongEnough(t *testing.T) {
+	a, err := NewToken()
+	if err != nil {
+		t.Fatalf("NewToken: %v", err)
+	}
+	b, _ := NewToken()
+	if a == b {
+		t.Fatal("tokens are not random")
+	}
+	if len(a) < 32 {
+		t.Fatalf("token too short: %q", a)
+	}
+}
+
+// ── Reading the vault ────────────────────────────────────────────────────────
 
 func TestStateListsTrackedFiles(t *testing.T) {
 	h, _ := newTestServer(t, map[string]string{"api/.env": "A=1", "web/.env.local": "B=1"})
@@ -171,23 +222,25 @@ func TestStateListsTrackedFiles(t *testing.T) {
 		t.Fatalf("want 2 files, got %d", len(st.Files))
 	}
 	if st.Files[0].Index != 1 || st.Files[1].Index != 2 {
-		t.Fatalf("files not indexed from 1: %+v", st.Files)
+		t.Fatalf("files are not numbered from 1: %+v", st.Files)
 	}
 	if st.Files[0].Display == "" || st.Files[0].Versions != 1 {
-		t.Fatalf("unexpected file entry: %+v", st.Files[0])
+		t.Fatalf("unexpected entry: %+v", st.Files[0])
+	}
+	if !st.Files[0].Exists {
+		t.Error("a file still on disk was reported as gone")
 	}
 	if st.Daemon.Running {
-		t.Fatal("no daemon should be running in a fresh sandbox")
+		t.Error("no daemon should be running in a fresh sandbox")
 	}
 }
 
 func TestHistoryAndContent(t *testing.T) {
 	h, root := newTestServer(t, map[string]string{"api/.env": "A=1"})
 
-	// A second version so version selection is meaningful.
-	p := filepath.Join(root, "proj", "api", ".env")
-	if err := os.WriteFile(p, []byte("A=2"), 0600); err != nil {
-		t.Fatalf("write: %v", err)
+	// A second version, so version selection means something.
+	if err := os.WriteFile(filepath.Join(root, "proj", "api", ".env"), []byte("A=2"), 0600); err != nil {
+		t.Fatal(err)
 	}
 	do(t, h, http.MethodPost, "/api/scan", map[string]any{"dirs": []string{filepath.Join(root, "proj")}})
 
@@ -195,46 +248,45 @@ func TestHistoryAndContent(t *testing.T) {
 		Snapshots []struct {
 			Version int    `json:"version"`
 			ShortID string `json:"short_id"`
-			Size    int64  `json:"size"`
 		} `json:"snapshots"`
 	}](t, do(t, h, http.MethodGet, "/api/history?file=1", nil))
 	if len(hist.Snapshots) != 2 {
-		t.Fatalf("want 2 snapshots, got %d", len(hist.Snapshots))
+		t.Fatalf("want 2 versions, got %d", len(hist.Snapshots))
 	}
 	if hist.Snapshots[0].Version != 1 || hist.Snapshots[0].ShortID == "" {
-		t.Fatalf("unexpected snapshot: %+v", hist.Snapshots[0])
+		t.Fatalf("unexpected version: %+v", hist.Snapshots[0])
 	}
 
 	type contentResp struct {
 		Version int    `json:"version"`
 		Content string `json:"content"`
 	}
-	latest := decode[contentResp](t, do(t, h, http.MethodGet, "/api/content?file=1", nil))
-	if latest.Content != "A=2" {
-		t.Fatalf("latest content = %q, want A=2", latest.Content)
+	if latest := decode[contentResp](t, do(t, h, http.MethodGet, "/api/content?file=1", nil)); latest.Content != "A=2" {
+		t.Fatalf("default content = %q, want the newest (A=2)", latest.Content)
 	}
-	first := decode[contentResp](t, do(t, h, http.MethodGet, "/api/content?file=1&version=1", nil))
-	if first.Content != "A=1" {
+	if first := decode[contentResp](t, do(t, h, http.MethodGet, "/api/content?file=1&version=1", nil)); first.Content != "A=1" {
 		t.Fatalf("v1 content = %q, want A=1", first.Content)
 	}
 
 	if rec := do(t, h, http.MethodGet, "/api/content?file=1&version=99", nil); rec.Code != http.StatusBadRequest {
-		t.Fatalf("want 400 for an out-of-range version, got %d", rec.Code)
+		t.Errorf("want 400 for an out-of-range version, got %d", rec.Code)
 	}
 	if rec := do(t, h, http.MethodGet, "/api/content?file=42", nil); rec.Code != http.StatusBadRequest {
-		t.Fatalf("want 400 for an unknown file, got %d", rec.Code)
+		t.Errorf("want 400 for an unknown file, got %d", rec.Code)
 	}
 }
+
+// ── Changing the vault ───────────────────────────────────────────────────────
 
 func TestScanBacksUpNewFiles(t *testing.T) {
 	h, root := newTestServer(t, nil)
 
 	dir := filepath.Join(root, "proj")
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatalf("mkdir: %v", err)
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("X=1"), 0600); err != nil {
-		t.Fatalf("write: %v", err)
+		t.Fatal(err)
 	}
 
 	res := decode[struct {
@@ -245,22 +297,23 @@ func TestScanBacksUpNewFiles(t *testing.T) {
 		t.Fatalf("want 1 found / 1 backed, got %+v", res)
 	}
 
-	st := decode[stateResp](t, do(t, h, http.MethodGet, "/api/state", nil))
-	if len(st.Files) != 1 {
+	if st := decode[stateResp](t, do(t, h, http.MethodGet, "/api/state", nil)); len(st.Files) != 1 {
 		t.Fatalf("scan did not track the file: %+v", st.Files)
 	}
 }
 
-func TestRestoreWritesToChosenPath(t *testing.T) {
+func TestRestoreWritesToTheChosenPath(t *testing.T) {
 	h, root := newTestServer(t, map[string]string{"api/.env": "A=1"})
 
 	out := filepath.Join(root, "out", "restored.env")
 	res := decode[struct {
 		Path string `json:"path"`
-	}](t, do(t, h, http.MethodPost, "/api/restore", map[string]any{"file": 1, "version": 1, "path": out}))
+	}](t, do(t, h, http.MethodPost, "/api/restore",
+		map[string]any{"file": 1, "version": 1, "path": out}))
 	if res.Path != out {
 		t.Fatalf("restored to %s, want %s", res.Path, out)
 	}
+
 	data, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatalf("read restored file: %v", err)
@@ -270,22 +323,16 @@ func TestRestoreWritesToChosenPath(t *testing.T) {
 	}
 }
 
-func TestForgetStopsTracking(t *testing.T) {
+func TestForgetThenGCReclaimsTheSpace(t *testing.T) {
 	h, _ := newTestServer(t, map[string]string{"api/.env": "A=1"})
 
 	if rec := do(t, h, http.MethodPost, "/api/forget", map[string]any{"file": 1}); rec.Code != http.StatusOK {
 		t.Fatalf("forget: status %d: %s", rec.Code, rec.Body.String())
 	}
-	st := decode[stateResp](t, do(t, h, http.MethodGet, "/api/state", nil))
-	if len(st.Files) != 0 {
-		t.Fatalf("file still tracked after forget: %+v", st.Files)
+	if st := decode[stateResp](t, do(t, h, http.MethodGet, "/api/state", nil)); len(st.Files) != 0 {
+		t.Fatalf("still tracked after forget: %+v", st.Files)
 	}
-}
 
-func TestGCReclaimsOrphanedBlobs(t *testing.T) {
-	h, _ := newTestServer(t, map[string]string{"api/.env": "A=1"})
-
-	do(t, h, http.MethodPost, "/api/forget", map[string]any{"file": 1})
 	res := decode[struct {
 		Removed int   `json:"removed"`
 		Freed   int64 `json:"freed"`
@@ -300,19 +347,14 @@ func TestWatchDirValidation(t *testing.T) {
 
 	dir := filepath.Join(root, "watched")
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatalf("mkdir: %v", err)
+		t.Fatal(err)
 	}
 	if rec := do(t, h, http.MethodPost, "/api/watch", map[string]any{"dir": dir}); rec.Code != http.StatusOK {
 		t.Fatalf("watch: status %d: %s", rec.Code, rec.Body.String())
 	}
+
 	st := decode[stateResp](t, do(t, h, http.MethodGet, "/api/state", nil))
-	found := false
-	for _, d := range st.Config.WatchDirs {
-		if d == dir {
-			found = true
-		}
-	}
-	if !found {
+	if !slicesContains(st.Config.WatchDirs, dir) {
 		t.Fatalf("watch dir not persisted: %+v", st.Config.WatchDirs)
 	}
 
@@ -322,7 +364,7 @@ func TestWatchDirValidation(t *testing.T) {
 	}
 }
 
-func TestConfigUpdate(t *testing.T) {
+func TestConfigUpdateValidates(t *testing.T) {
 	h, _ := newTestServer(t, nil)
 
 	if rec := do(t, h, http.MethodPost, "/api/config", map[string]any{
@@ -335,13 +377,18 @@ func TestConfigUpdate(t *testing.T) {
 		t.Fatalf("config not saved: %+v", st.Config)
 	}
 
-	rec := do(t, h, http.MethodPost, "/api/config", map[string]any{"scan_interval_secs": 0})
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("want 400 for a zero scan interval, got %d", rec.Code)
+	for name, body := range map[string]map[string]any{
+		"zero interval":        {"scan_interval_secs": 0},
+		"negative versions":    {"max_versions": -1},
+		"missing watch folder": {"watch_dirs": []string{"/definitely/not/here"}},
+	} {
+		if rec := do(t, h, http.MethodPost, "/api/config", body); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: want 400, got %d", name, rec.Code)
+		}
 	}
 }
 
-func TestExportDownloadsZip(t *testing.T) {
+func TestExportDownloadsAZip(t *testing.T) {
 	h, _ := newTestServer(t, map[string]string{"api/.env": "A=1"})
 
 	rec := do(t, h, http.MethodGet, "/api/export", nil)
@@ -349,10 +396,10 @@ func TestExportDownloadsZip(t *testing.T) {
 		t.Fatalf("export: status %d: %s", rec.Code, rec.Body.String())
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "application/zip" {
-		t.Fatalf("content-type = %q", ct)
+		t.Errorf("Content-Type = %q", ct)
 	}
 	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "attachment") {
-		t.Fatalf("content-disposition = %q", cd)
+		t.Errorf("Content-Disposition = %q", cd)
 	}
 	body := rec.Body.Bytes()
 	if _, err := zip.NewReader(bytes.NewReader(body), int64(len(body))); err != nil {
@@ -360,20 +407,35 @@ func TestExportDownloadsZip(t *testing.T) {
 	}
 }
 
-func TestPeekReadsArchiveWithoutImporting(t *testing.T) {
-	h, root := newTestServer(t, map[string]string{"api/.env": "A=1"})
+func TestMethodNotAllowed(t *testing.T) {
+	h, _ := newTestServer(t, nil)
 
+	if rec := do(t, h, http.MethodGet, "/api/scan", nil); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("want 405 for GET on a POST-only route, got %d", rec.Code)
+	}
+}
+
+// ── Peeking ──────────────────────────────────────────────────────────────────
+
+// exportToFile writes the vault out and returns the archive's path.
+func exportToFile(t *testing.T, h http.Handler, root string) string {
+	t.Helper()
 	rec := do(t, h, http.MethodGet, "/api/export", nil)
 	zipPath := filepath.Join(root, "backup.zip")
 	if err := os.WriteFile(zipPath, rec.Body.Bytes(), 0600); err != nil {
 		t.Fatalf("write zip: %v", err)
 	}
+	return zipPath
+}
+
+func TestPeekReadsAnArchiveWithoutImporting(t *testing.T) {
+	h, root := newTestServer(t, map[string]string{"api/.env": "A=1"})
+	zipPath := exportToFile(t, h, root)
 
 	listing := decode[struct {
 		Files []struct {
-			Index    int    `json:"index"`
-			Path     string `json:"path"`
-			Versions int    `json:"versions"`
+			Index    int `json:"index"`
+			Versions int `json:"versions"`
 		} `json:"files"`
 	}](t, do(t, h, http.MethodPost, "/api/peek", map[string]any{"path": zipPath}))
 	if len(listing.Files) != 1 || listing.Files[0].Versions != 1 {
@@ -387,20 +449,15 @@ func TestPeekReadsArchiveWithoutImporting(t *testing.T) {
 		t.Fatalf("peek content = %q", content.Content)
 	}
 
-	rec = do(t, h, http.MethodPost, "/api/peek", map[string]any{"path": filepath.Join(root, "missing.zip")})
+	rec := do(t, h, http.MethodPost, "/api/peek", map[string]any{"path": filepath.Join(root, "missing.zip")})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for a missing archive, got %d", rec.Code)
 	}
 }
 
-func TestPeekSaveWritesOutsideTheVault(t *testing.T) {
+func TestPeekSaveWritesOutsideTheVaultOnly(t *testing.T) {
 	h, root := newTestServer(t, map[string]string{"api/.env": "A=1"})
-
-	rec := do(t, h, http.MethodGet, "/api/export", nil)
-	zipPath := filepath.Join(root, "backup.zip")
-	if err := os.WriteFile(zipPath, rec.Body.Bytes(), 0600); err != nil {
-		t.Fatalf("write zip: %v", err)
-	}
+	zipPath := exportToFile(t, h, root)
 
 	out := filepath.Join(root, "pulled", "out.env")
 	res := decode[struct {
@@ -418,7 +475,7 @@ func TestPeekSaveWritesOutsideTheVault(t *testing.T) {
 		t.Fatalf("saved content = %q", data)
 	}
 
-	// Peek must never write into the vault, even when asked to.
+	// Peek must refuse the vault even when asked directly.
 	inVault := filepath.Join(config.VaultDir(), "sneaky.env")
 	if rec := do(t, h, http.MethodPost, "/api/peek/save",
 		map[string]any{"path": zipPath, "file": 1, "out": inVault}); rec.Code != http.StatusBadRequest {
@@ -429,42 +486,95 @@ func TestPeekSaveWritesOutsideTheVault(t *testing.T) {
 	}
 }
 
-func TestMethodNotAllowed(t *testing.T) {
-	h, _ := newTestServer(t, nil)
+// ── The page itself ──────────────────────────────────────────────────────────
 
-	if rec := do(t, h, http.MethodGet, "/api/scan", nil); rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("want 405 for GET on a POST-only route, got %d", rec.Code)
-	}
-}
-
-// The page ships inside the binary and must render with no network at all.
+// It ships inside the binary and must render with no network at all.
 func TestPageIsSelfContained(t *testing.T) {
-	for _, forbidden := range []string{"src=\"http", "href=\"http", "@import", "cdn."} {
-		if strings.Contains(indexHTML, forbidden) {
-			t.Errorf("page reaches outside the binary: found %q", forbidden)
+	page := assetSource("index.html")
+	if page == "" {
+		t.Fatal("index.html is not embedded")
+	}
+	for _, forbidden := range []string{`src="http`, `href="http`, "@import", "cdn."} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("the page reaches outside the binary: found %q", forbidden)
 		}
 	}
 }
 
-// Values from .env files flow into the page, so nothing may be parsed as markup.
-func TestPageNeverAssignsInnerHTML(t *testing.T) {
-	for _, forbidden := range []string{"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"} {
-		if strings.Contains(indexHTML, forbidden) {
-			t.Errorf("page builds markup from strings: found %q", forbidden)
+// .env values flow into this DOM, so nothing may be parsed as markup.
+func TestPageNeverBuildsMarkupFromStrings(t *testing.T) {
+	for _, name := range []string{"index.html", "app.js"} {
+		source := assetSource(name)
+		if source == "" {
+			t.Fatalf("%s is not embedded", name)
+		}
+		for _, forbidden := range []string{"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"} {
+			if strings.Contains(source, forbidden) {
+				t.Errorf("%s builds markup from strings: found %q", name, forbidden)
+			}
 		}
 	}
 }
 
-func TestNewTokenIsRandomAndOpaque(t *testing.T) {
-	a, err := NewToken()
-	if err != nil {
-		t.Fatalf("NewToken: %v", err)
+// The mask must be a fixed string. One built from the value — repeating a dot
+// per character — would draw a picture of how long every secret is.
+func TestMaskDoesNotTrackSecretLength(t *testing.T) {
+	script := assetSource("app.js")
+	if !strings.Contains(script, `const MASK = "`) {
+		t.Fatal("the mask is no longer a fixed string constant")
 	}
-	b, _ := NewToken()
-	if a == b {
-		t.Fatal("tokens are not random")
+	for _, line := range strings.Split(script, "\n") {
+		if !strings.Contains(line, "MASK") {
+			continue
+		}
+		for _, forbidden := range []string{".length", "repeat(", "slice(", "padEnd(", "padStart("} {
+			if strings.Contains(line, forbidden) {
+				t.Errorf("the mask is derived from the value on this line: %s", strings.TrimSpace(line))
+			}
+		}
 	}
-	if len(a) < 32 {
-		t.Fatalf("token too short: %q", a)
+}
+
+// Every icon the script asks for has to exist in the sprite, or it renders blank.
+func TestEveryReferencedIconExists(t *testing.T) {
+	page := assetSource("index.html")
+	script := assetSource("app.js")
+
+	for _, name := range []string{
+		"lock", "search", "check", "alert", "eye", "eye-off", "copy", "restore",
+		"save", "upload", "trash", "scan", "folder", "archive", "broom", "gear",
+		"keyboard", "file", "back", "play", "stop",
+	} {
+		if !strings.Contains(page, `id="i-`+name+`"`) {
+			t.Errorf("sprite is missing icon %q", name)
+		}
 	}
+
+	// Nothing should reference an icon by a name the sprite does not define.
+	for _, quoted := range []string{`icon("`, `icon: "`} {
+		rest := script
+		for {
+			at := strings.Index(rest, quoted)
+			if at < 0 {
+				break
+			}
+			rest = rest[at+len(quoted):]
+			end := strings.IndexByte(rest, '"')
+			if end < 0 {
+				break
+			}
+			if name := rest[:end]; !strings.Contains(page, `id="i-`+name+`"`) {
+				t.Errorf("script uses icon %q, which the sprite does not define", name)
+			}
+		}
+	}
+}
+
+func slicesContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }

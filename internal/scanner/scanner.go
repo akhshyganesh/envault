@@ -1,77 +1,32 @@
+// Package scanner walks directory trees looking for env files and hands each
+// one to the store.
 package scanner
 
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/akhshyganesh/envault/internal/store"
 )
 
-// skipDirs is the set of directory names that the scanner never descends into.
-var skipDirs = map[string]bool{
-	"node_modules": true,
-	".git":         true,
-	".svn":         true,
-	".hg":          true,
-	"vendor":       true,
-	"__pycache__":  true,
-	".venv":        true,
-	"venv":         true,
-	".tox":         true,
-	"dist":         true,
-	"build":        true,
-	".envault":     true,
+// Result summarises one scan. Errors are collected rather than returned so a
+// single unreadable directory does not abandon the rest of the walk.
+type Result struct {
+	Found   []string
+	Backed  int // new snapshots created
+	Skipped int // files whose content was unchanged
+	Errors  []error
 }
 
-func shouldSkipDir(name string) bool {
-	return skipDirs[name]
-}
-
-// isEnvFile checks if a filename matches env file patterns.
-// Matches:
-//   - .env
-//   - .env.* (.env.local, .env.production, .env.sample, .env.development, etc.)
-//   - *.env  (production.env, staging.env, app.env, etc.)
-func isEnvFile(name string) bool {
-	base := filepath.Base(name)
-
-	// Exact match: .env
-	if base == ".env" {
-		return true
-	}
-
-	// Prefix match: .env.* (.env.local, .env.sample, .env.production, etc.)
-	if strings.HasPrefix(base, ".env.") {
-		return true
-	}
-
-	// Suffix match: *.env (production.env, staging.env, etc.)
-	if strings.HasSuffix(base, ".env") && base != ".env" {
-		return true
-	}
-
-	return false
-}
-
-// ScanResult holds the result of scanning a directory tree.
-type ScanResult struct {
-	Found   []string // env files found
-	Backed  int      // new snapshots created
-	Skipped int      // unchanged files (already latest)
-	Errors  []error  // any errors encountered
-}
-
-// ScanDirectory walks a directory tree, finds all .env files, and backs them up.
-func ScanDirectory(dir string, s *store.Store) (*ScanResult, error) {
-	result := &ScanResult{}
+// ScanDirectory walks one tree, backing up every env file it finds.
+func ScanDirectory(dir string, s *store.Store) (*Result, error) {
+	res := &Result{}
 
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			// Permission denied, etc. — record and skip just this entry.
-			// Only skip the whole subtree when the error is on a directory;
-			// skipping on a file would wrongly abandon its siblings.
-			result.Errors = append(result.Errors, err)
+			// Usually a permission denial. Skip the subtree when the failure is
+			// on a directory; skipping on a file would abandon its siblings too.
+			res.Errors = append(res.Errors, err)
 			if d != nil && d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -84,34 +39,30 @@ func ScanDirectory(dir string, s *store.Store) (*ScanResult, error) {
 			}
 			return nil
 		}
-
 		if !isEnvFile(d.Name()) {
 			return nil
 		}
 
-		result.Found = append(result.Found, path)
-
+		res.Found = append(res.Found, path)
 		_, isNew, err := s.SaveSnapshot(path, "auto")
 		if err != nil {
-			result.Errors = append(result.Errors, err)
+			res.Errors = append(res.Errors, err)
 			return nil
 		}
 		if isNew {
-			result.Backed++
+			res.Backed++
 		} else {
-			result.Skipped++
+			res.Skipped++
 		}
-
 		return nil
 	})
 
-	return result, err
+	return res, err
 }
 
-// ScanDirectories scans multiple directories.
-func ScanDirectories(dirs []string, s *store.Store) (*ScanResult, error) {
-	combined := &ScanResult{}
-
+// ScanDirectories walks several trees and merges their results.
+func ScanDirectories(dirs []string, s *store.Store) (*Result, error) {
+	combined := &Result{}
 	for _, dir := range dirs {
 		res, err := ScanDirectory(dir, s)
 		if err != nil {
@@ -123,6 +74,5 @@ func ScanDirectories(dirs []string, s *store.Store) (*ScanResult, error) {
 		combined.Skipped += res.Skipped
 		combined.Errors = append(combined.Errors, res.Errors...)
 	}
-
 	return combined, nil
 }

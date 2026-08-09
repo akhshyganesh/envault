@@ -1,3 +1,9 @@
+// Package daemon runs the background scan loop and manages its process state.
+//
+// Nothing here writes to stdout: the daemon may be started from a TUI running
+// in the alternate screen, where a stray Println corrupts the display. Status
+// goes to the vault's log file, and anything the user should read is returned
+// to the caller.
 package daemon
 
 import (
@@ -5,7 +11,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -14,19 +19,10 @@ import (
 	"github.com/akhshyganesh/envault/internal/store"
 )
 
-// PidFilePath returns the path to the daemon's PID file.
-func PidFilePath() string {
-	return filepath.Join(config.VaultDir(), "envault.pid")
-}
-
-// LogFilePath returns the path to the daemon's log file.
-func LogFilePath() string {
-	return filepath.Join(config.VaultDir(), "envault.log")
-}
-
-// IsRunning checks if the daemon is already running.
+// IsRunning reports whether a daemon holds the PID file, and its PID.
+// A PID file left behind by a crash is cleaned up here rather than believed.
 func IsRunning() (bool, int) {
-	data, err := os.ReadFile(PidFilePath())
+	data, err := os.ReadFile(config.PidPath())
 	if err != nil {
 		return false, 0
 	}
@@ -34,34 +30,19 @@ func IsRunning() (bool, int) {
 	if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
 		return false, 0
 	}
-	// Check if process exists
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return false, 0
 	}
-	// On Unix, sending signal 0 checks if the process exists
+	// Signal 0 tests for the process without disturbing it.
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		// Process doesn't exist, clean up stale PID file
-		os.Remove(PidFilePath())
+		_ = os.Remove(config.PidPath())
 		return false, 0
 	}
 	return true, pid
 }
 
-// writePID writes the current process PID to the PID file.
-func writePID() error {
-	if err := os.MkdirAll(config.VaultDir(), 0700); err != nil {
-		return err
-	}
-	return os.WriteFile(PidFilePath(), []byte(fmt.Sprintf("%d", os.Getpid())), 0600)
-}
-
-// removePID removes the PID file.
-func removePID() {
-	os.Remove(PidFilePath())
-}
-
-// Run starts the daemon loop that periodically scans for .env files.
+// Run scans on a timer until it is signalled to stop. It blocks.
 func Run() error {
 	if running, pid := IsRunning(); running {
 		return fmt.Errorf("envault daemon already running (PID %d)", pid)
@@ -69,19 +50,14 @@ func Run() error {
 
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	s, err := store.NewStore()
-	if err != nil {
-		return fmt.Errorf("opening store: %w", err)
-	}
-
-	// Setup logging
-	if err := os.MkdirAll(config.VaultDir(), 0700); err != nil {
 		return err
 	}
-	logFile, err := os.OpenFile(LogFilePath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	s, err := store.NewStore()
+	if err != nil {
+		return err
+	}
+
+	logFile, err := os.OpenFile(config.LogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return fmt.Errorf("opening log file: %w", err)
 	}
@@ -89,52 +65,31 @@ func Run() error {
 	logger := log.New(logFile, "", log.LstdFlags)
 
 	if err := writePID(); err != nil {
-		return fmt.Errorf("writing PID file: %w", err)
+		return err
 	}
-	defer removePID()
+	defer func() { _ = os.Remove(config.PidPath()) }()
 
-	logger.Println("envault daemon started")
-	fmt.Println("envault daemon started (PID", os.Getpid(), ")")
+	logger.Printf("daemon started (PID %d), scanning every %ds", os.Getpid(), cfg.ScanIntervalSecs)
 
-	// Handle shutdown signals
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	interval := time.Duration(cfg.ScanIntervalSecs) * time.Second
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(time.Duration(cfg.ScanIntervalSecs) * time.Second)
 	defer ticker.Stop()
 
-	// Run initial scan immediately
-	runScan(cfg, s, logger)
-
+	scanOnce(cfg, s, logger)
 	for {
 		select {
 		case <-ticker.C:
-			runScan(cfg, s, logger)
-		case sig := <-sigCh:
-			logger.Printf("received signal %v, shutting down", sig)
-			fmt.Println("\nenvault daemon stopped")
+			scanOnce(cfg, s, logger)
+		case sig := <-stop:
+			logger.Printf("received %v, shutting down", sig)
 			return nil
 		}
 	}
 }
 
-func runScan(cfg *config.Config, s *store.Store, logger *log.Logger) {
-	result, err := scanner.ScanDirectories(cfg.WatchDirs, s)
-	if err != nil {
-		logger.Printf("scan error: %v", err)
-		return
-	}
-	if result.Backed > 0 {
-		logger.Printf("scan complete: %d files found, %d new snapshots, %d unchanged",
-			len(result.Found), result.Backed, result.Skipped)
-	}
-	for _, e := range result.Errors {
-		logger.Printf("scan warning: %v", e)
-	}
-}
-
-// Stop sends a termination signal to the running daemon.
+// Stop signals a running daemon to exit.
 func Stop() error {
 	running, pid := IsRunning()
 	if !running {
@@ -145,8 +100,34 @@ func Stop() error {
 		return err
 	}
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		return fmt.Errorf("failed to stop daemon (PID %d): %w", pid, err)
+		return fmt.Errorf("cannot stop daemon (PID %d): %w", pid, err)
 	}
-	fmt.Printf("envault daemon stopped (PID %d)\n", pid)
 	return nil
+}
+
+func writePID() error {
+	if err := os.MkdirAll(config.VaultDir(), 0700); err != nil {
+		return err
+	}
+	pid := fmt.Sprintf("%d", os.Getpid())
+	if err := os.WriteFile(config.PidPath(), []byte(pid), 0600); err != nil {
+		return fmt.Errorf("writing PID file: %w", err)
+	}
+	return nil
+}
+
+// scanOnce logs only when something changed, so an idle daemon does not grow
+// the log file forever.
+func scanOnce(cfg *config.Config, s *store.Store, logger *log.Logger) {
+	res, err := scanner.ScanDirectories(cfg.WatchDirs, s)
+	if err != nil {
+		logger.Printf("scan failed: %v", err)
+		return
+	}
+	if res.Backed > 0 {
+		logger.Printf("scanned %d files: %d new, %d unchanged", len(res.Found), res.Backed, res.Skipped)
+	}
+	for _, e := range res.Errors {
+		logger.Printf("warning: %v", e)
+	}
 }

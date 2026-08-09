@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & Release
+  build:
+    name: Build ${{ matrix.asset_name }}
     runs-on: ubuntu-latest
 
     strategy:
@@ -37,14 +37,19 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.26'
+          cache: true
 
+      # Static (CGO_ENABLED=0), stripped (-s -w), and stamped with the tag.
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
-          go build -ldflags="-s -w -X github.com/akhshyganesh/envault/cmd.Version=${{ github.ref_name }} -X github.com/akhshyganesh/envault/cmd.BuildDate=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+          go build \
+            -ldflags="-s -w \
+              -X github.com/akhshyganesh/envault/cmd.Version=${{ github.ref_name }} \
+              -X github.com/akhshyganesh/envault/cmd.BuildDate=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
             -o dist/${{ matrix.asset_name }} .
 
       - name: Upload artifact
@@ -54,34 +59,26 @@ jobs:
           path: dist/${{ matrix.asset_name }}
 
   publish:
-    name: Publish GitHub Release
-    needs: release
+    name: Publish release
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
+      - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
-          path: dist/
+          path: dist
+          merge-multiple: true
 
-      - name: Flatten dist directory
-        run: |
-          mkdir -p dist/flat
-          find dist -mindepth 2 -type f -exec mv -t dist/flat {} +
-          find dist -mindepth 1 -maxdepth 1 -type d ! -name flat -exec rm -rf {} +
-          mv dist/flat/* dist/
-          rmdir dist/flat
-
-      - name: Create checksums
+      # install.sh verifies downloads against this file, so it has to list every
+      # published binary under its exact asset name.
+      - name: Write checksums
         run: |
           cd dist
           sha256sum envault-* > checksums.txt
           cat checksums.txt
 
-      - name: Create Release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           draft: false

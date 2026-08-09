@@ -23,20 +23,13 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - name: Check formatting
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "These files need gofmt:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test -race ./...
+      # `make check` is fmt + vet + race tests, so this is the same gate
+      # contributors run locally.
+      - name: Check
+        run: make check
 
       - name: Build
         run: make build
+
+      - name: Shell-check the installer
+        run: sh -n install.sh
