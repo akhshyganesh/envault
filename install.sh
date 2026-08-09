@@ -157,13 +157,23 @@ $SUDO install -m 755 "$TMP" "${INSTALL_DIR}/${BIN_NAME}"
 echo ""
 echo "envault v${LATEST} installed to ${INSTALL_DIR}/${BIN_NAME}"
 
+# Installing the binary configures nothing: no watch list, no login service,
+# no backups. Say so, or people assume their secrets are already safe.
+RUN="envault"
 case ":${PATH}:" in
-  *":${INSTALL_DIR}:"*)
-    echo "  Run 'envault' to get started."
-    ;;
+  *":${INSTALL_DIR}:"*) ;;
   *)
+    RUN="${INSTALL_DIR}/${BIN_NAME}"
     echo ""
     echo "  ${INSTALL_DIR} is not on your PATH. Add this to your shell profile:"
     echo "    export PATH=\"${INSTALL_DIR}:\$PATH\""
     ;;
 esac
+
+echo ""
+echo "Nothing is being backed up yet. Finish setup with:"
+echo ""
+echo "    ${RUN}"
+echo ""
+echo "That asks which folders to watch and how often, takes a first backup,"
+echo "and sets envault to start at login. Check it later with 'envault status'."

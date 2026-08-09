@@ -118,8 +118,9 @@ func (m model) viewInstall() string {
 		b.WriteString(theme.Bad.Render("  "+theme.GlyphBad+"  ") + m.err.Error() + "\n")
 	} else {
 		b.WriteString(theme.Good.Render("  "+theme.GlyphOK+"  All set. ") + "envault is watching in the background.\n\n")
-		b.WriteString("  " + theme.Key.Render("envault list") + theme.Dim.Render("   see what is backed up") + "\n")
-		b.WriteString("  " + theme.Key.Render("envault ui  ") + theme.Dim.Render("   browse it interactively") + "\n")
+		b.WriteString("  " + theme.Key.Render("envault status") + theme.Dim.Render("   is it running, and will it start at login") + "\n")
+		b.WriteString("  " + theme.Key.Render("envault list  ") + theme.Dim.Render("   see what is backed up") + "\n")
+		b.WriteString("  " + theme.Key.Render("envault ui    ") + theme.Dim.Render("   browse it interactively") + "\n")
 	}
 
 	return b.String() + "\n" + theme.Dim.Render("  Press any key to exit") + "\n"
