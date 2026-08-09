@@ -32,7 +32,7 @@ var uninstallCmd = &cobra.Command{
 		}
 
 		if err := daemon.Uninstall(); err != nil {
-			fmt.Printf("⚠ Service removal: %v\n", err)
+			fmt.Printf("! Service removal: %v\n", err)
 		}
 
 		if !pruneData {

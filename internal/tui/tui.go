@@ -769,7 +769,7 @@ func (m model) viewInput() string {
 	b.WriteString("  " + m.textInput.View() + "\n\n")
 
 	if m.inputAction == inputConfirmOverwrite {
-		b.WriteString(warnStyle.Render("  ⚠  This will overwrite all existing vault data.") + "\n")
+		b.WriteString(warnStyle.Render("  !  This will overwrite all existing vault data.") + "\n")
 	}
 
 	rendered := strings.Count(b.String(), "\n")
@@ -803,7 +803,7 @@ func (m model) renderHeader(crumbs ...string) string {
 	parts := make([]string, len(crumbs))
 	for i, c := range crumbs {
 		if i == 0 {
-			parts[i] = brandStyle.Render("🔒 " + c)
+			parts[i] = brandStyle.Render(c)
 		} else {
 			parts[i] = crumbStyle.Render(c)
 		}

@@ -25,10 +25,10 @@ var initCmd = &cobra.Command{
 
 		if firstTime {
 			fmt.Println()
-			fmt.Println("  ╔══════════════════════════════════════════════════╗")
-			fmt.Println("  ║     🔒 Welcome to envault!                      ║")
-			fmt.Println("  ║     Your .env files, safely vaulted.             ║")
-			fmt.Println("  ╚══════════════════════════════════════════════════╝")
+			fmt.Println("  ┌──────────────────────────────────────────────────┐")
+			fmt.Println("  │  Welcome to envault                              │")
+			fmt.Println("  │  Your .env files, safely vaulted.                │")
+			fmt.Println("  └──────────────────────────────────────────────────┘")
 			fmt.Println()
 			fmt.Printf("  ✓ Vault created at %s\n", config.VaultDir())
 			fmt.Printf("  ✓ Config: %s\n", config.ConfigPath())
@@ -39,10 +39,10 @@ var initCmd = &cobra.Command{
 			fmt.Println("  Run 'envault start' to launch the background daemon")
 			fmt.Println()
 			fmt.Println("  ── Support the Project ──────────────────────────")
-			fmt.Println("  ⭐ Star us on GitHub: https://github.com/akhshyganesh/envault")
-			fmt.Println("  📺 Watch tutorials:   https://www.youtube.com/@code_wid_mapla")
+			fmt.Println("  Star us on GitHub: https://github.com/akhshyganesh/envault")
+			fmt.Println("  Watch tutorials:   https://www.youtube.com/@code_wid_mapla")
 			fmt.Println()
-			fmt.Println("  Made with ❤ by Akhshy (Code_Wid_Mapla)")
+			fmt.Println("  Made by Akhshy (Code_Wid_Mapla)")
 			fmt.Println()
 		} else {
 			fmt.Printf("✓ envault re-initialized at %s\n", config.VaultDir())

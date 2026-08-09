@@ -60,7 +60,7 @@ Press Ctrl+C to stop.`,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 
-		fmt.Println("🔒 envault is running in your browser")
+		fmt.Println("envault is running in your browser")
 		fmt.Printf("   %s\n\n", url)
 		fmt.Println("   Local only — the link works on this machine and nowhere else.")
 		fmt.Println("   Press Ctrl+C to stop.")

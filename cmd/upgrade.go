@@ -15,7 +15,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print envault version and build info",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("🔒 envault — your .env files, safely vaulted")
+		fmt.Println("envault — your .env files, safely vaulted")
 		fmt.Println()
 		fmt.Printf("  Version:    %s\n", Version)
 		fmt.Printf("  Built:      %s\n", BuildDate)

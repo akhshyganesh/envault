@@ -166,4 +166,4 @@ envault peek ~/backup.zip 3 -o ./.env     # pull one version out
 
 ## License
 
-MIT — Made with ❤ by [Akhshy](https://www.youtube.com/@code_wid_mapla)
+MIT — Made by [Akhshy](https://www.youtube.com/@code_wid_mapla)

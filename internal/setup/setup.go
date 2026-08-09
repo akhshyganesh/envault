@@ -407,7 +407,7 @@ func (m model) View() string {
 		label = "Step 3 of 3 — Installing"
 	}
 	width := max(m.width, 1)
-	b.WriteString(brandStyle.Render("🔒 envault setup") + ruleStyle.Render("  ·  ") + stepLabelStyle.Render(label) + "\n")
+	b.WriteString(brandStyle.Render("envault setup") + ruleStyle.Render("  ·  ") + stepLabelStyle.Render(label) + "\n")
 	b.WriteString(ruleStyle.Render(strings.Repeat("─", width)) + "\n\n")
 
 	switch m.step {
@@ -518,7 +518,7 @@ func (m model) viewInstall() string {
 
 	for _, line := range m.lines {
 		if line.warn {
-			b.WriteString(warnStyle.Render("  ⚠  ") + line.text + "\n")
+			b.WriteString(warnStyle.Render("  !  ") + line.text + "\n")
 		} else {
 			b.WriteString(successStyle.Render("  ✓  ") + line.text + "\n")
 		}

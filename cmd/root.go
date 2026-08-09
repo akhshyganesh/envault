@@ -19,7 +19,7 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:          "envault",
-	Short:        "🔒 envault — your .env files, safely vaulted",
+	Short:        "envault — your .env files, safely vaulted",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(config.VaultDir()); os.IsNotExist(err) {
