@@ -16,13 +16,24 @@ envault solves all three. Silently. Automatically.
 curl -fsSL https://raw.githubusercontent.com/akhshyganesh/envault/develop/install.sh | sh
 ```
 
-This auto-detects your OS and architecture, downloads the correct binary, and installs it to `/usr/local/bin` (you'll be prompted for your sudo password).
+This auto-detects your OS and architecture, downloads the correct binary, verifies it against
+the release checksums, and installs it to `/usr/local/bin` — creating that directory if your
+system doesn't have it (you'll be prompted for your sudo password).
+
+To install somewhere you own and skip sudo entirely, set `ENVAULT_INSTALL_DIR`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/akhshyganesh/envault/develop/install.sh \
+  | ENVAULT_INSTALL_DIR="$HOME/.local/bin" sh
+```
 
 **Build from source** (requires Go 1.26+):
 ```bash
 git clone https://github.com/akhshyganesh/envault.git && cd envault
-make build && sudo make install
+make build && make install
 ```
+
+`make install` also honours `INSTALL_DIR`: `make install INSTALL_DIR="$HOME/.local/bin"`.
 
 ## Quick Start
 
