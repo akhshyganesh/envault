@@ -100,7 +100,7 @@ using it, and press Ctrl+C when you're done.
 | `watch <dir>` | Add a directory to the watch list |
 | `start` / `stop` / `status` | Control the background daemon |
 | `install` | Interactive setup, including the OS startup service |
-| `uninstall [--prune]` | Remove the service, optionally deleting every backup |
+| `uninstall [--prune] [--all]` | Remove the service, and optionally the backups and the binary |
 | `export [-o file.zip]` | Export the whole vault as a zip |
 | `import <file.zip> [--force]` | Restore a vault from a zip |
 | `peek <file.zip> [file\|#]` | Read a zip without importing it |
@@ -111,6 +111,18 @@ using it, and press Ctrl+C when you're done.
 
 Anywhere a file is expected you can pass the `#` from `envault list` instead of a
 path.
+
+### Removing envault
+
+```bash
+envault uninstall           # stops the daemon and removes the startup service,
+                            # then asks about your backups and the binary
+envault uninstall --prune   # service and backups, keeps the binary
+envault uninstall --all     # service, backups and the binary
+```
+
+Nothing is deleted without being asked for, and whatever survives is named at
+the end — so if it says "fully uninstalled", nothing is left behind.
 
 ## How it works
 

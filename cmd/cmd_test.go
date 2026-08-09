@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,6 +206,129 @@ func TestPeekRefusesToWriteIntoTheVault(t *testing.T) {
 	}
 }
 
+// ── uninstall ────────────────────────────────────────────────────────────────
+
+// Unlinking a running binary is legal on Unix, which is what makes --all able
+// to remove the very process executing it.
+func TestRemoveSelfDeletesTheBinary(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "envault")
+	if err := os.WriteFile(exe, []byte("binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := removeSelf(exe); err != nil {
+		t.Fatalf("removeSelf: %v", err)
+	}
+	if _, err := os.Stat(exe); !os.IsNotExist(err) {
+		t.Fatalf("the binary survived (err=%v)", err)
+	}
+}
+
+// A system-wide install needs root; the message has to say so rather than
+// leaking "permission denied".
+func TestRemoveSelfExplainsAnUnwritableInstallDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: every directory is writable")
+	}
+
+	dir := filepath.Join(t.TempDir(), "bin")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "envault")
+	if err := os.WriteFile(exe, []byte("binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+
+	err := removeSelf(exe)
+	if err == nil {
+		t.Fatal("want an error for a read-only install directory")
+	}
+	for _, want := range []string{exe, "sudo"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error message is missing %q:\n%s", want, err)
+		}
+	}
+	if _, statErr := os.Stat(exe); statErr != nil {
+		t.Error("the binary was removed despite the reported failure")
+	}
+}
+
+// "uninstalled" must never overstate what happened.
+func TestReportLeftoversNamesWhatSurvives(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	exe := filepath.Join(t.TempDir(), "envault")
+
+	cases := []struct {
+		name                       string
+		dataRemoved, binaryRemoved bool
+		wantContains               []string
+		wantMissing                []string
+	}{
+		{
+			name:        "everything gone",
+			dataRemoved: true, binaryRemoved: true,
+			wantContains: []string{"fully uninstalled"},
+			wantMissing:  []string{"still installed", "Backups kept"},
+		},
+		{
+			name:        "binary kept",
+			dataRemoved: true, binaryRemoved: false,
+			wantContains: []string{"still installed", "rm " + exe},
+			wantMissing:  []string{"fully uninstalled"},
+		},
+		{
+			name:        "nothing else touched",
+			dataRemoved: false, binaryRemoved: false,
+			wantContains: []string{"Backups kept", "still installed"},
+			wantMissing:  []string{"fully uninstalled"},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := captureStdout(t, func() {
+				reportLeftovers(c.dataRemoved, c.binaryRemoved, exe, nil)
+			})
+			for _, want := range c.wantContains {
+				if !strings.Contains(out, want) {
+					t.Errorf("output is missing %q:\n%s", want, out)
+				}
+			}
+			for _, unwanted := range c.wantMissing {
+				if strings.Contains(out, unwanted) {
+					t.Errorf("output should not claim %q:\n%s", unwanted, out)
+				}
+			}
+		})
+	}
+}
+
+// captureStdout collects what fn prints.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = saved }()
+
+	fn()
+	_ = w.Close()
+
+	var buf strings.Builder
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
 // ── command wiring ───────────────────────────────────────────────────────────
 
 // Every documented command must actually be registered, and the flags people
@@ -247,6 +371,8 @@ func TestFlagNamesAndShorthands(t *testing.T) {
 		{"peek", "version", "v"},
 		{"peek", "out", "o"}, // deliberately --out, not --output
 		{"web", "port", "p"},
+		{"uninstall", "prune", ""},
+		{"uninstall", "all", ""},
 	}
 	for _, c := range cases {
 		cmd, _, err := rootCmd.Find([]string{c.command})

@@ -108,7 +108,7 @@ leaves root-owned files. `install.sh` follows the same rules via
 | `watch <dir>` | — | Add to the watch list |
 | `start` / `stop` / `status` | — | Control the daemon |
 | `install` | — | Setup wizard |
-| `uninstall` | `--prune` | Remove the service, optionally the data |
+| `uninstall` | `--prune`, `--all` | Remove the service; optionally the data and the binary |
 | `export` | `-o/--output` | Vault → zip |
 | `import <zip>` | `--force` | Zip → vault |
 | `peek <zip> [file\|#]` | `-v/--version`, `--show`, `-o/--out`, `--force` | Read a zip; never writes to the vault |
