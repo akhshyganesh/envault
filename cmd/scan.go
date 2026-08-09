@@ -3,18 +3,20 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/akhshyganesh/envault/internal/config"
 	"github.com/akhshyganesh/envault/internal/scanner"
-	"github.com/akhshyganesh/envault/internal/store"
-	"github.com/spf13/cobra"
 )
 
 var scanCmd = &cobra.Command{
 	Use:   "scan [directories...]",
-	Short: "Scan directories for .env files and back them up",
-	Long:  "Walks the given directories (or configured watch dirs) and creates versioned backups of all .env files found.",
+	Short: "Find .env files and back them up",
+	Long: `Walks the given directories — or the configured watch directories when
+none are given — and records a new version of every .env file whose content
+has changed since the last scan.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.NewStore()
+		s, err := openStore()
 		if err != nil {
 			return err
 		}
@@ -28,20 +30,28 @@ var scanCmd = &cobra.Command{
 			dirs = cfg.WatchDirs
 		}
 
-		fmt.Printf("Scanning %d directory(ies) for .env files...\n", len(dirs))
-		result, err := scanner.ScanDirectories(dirs, s)
+		fmt.Printf("Scanning %d %s…\n", len(dirs), plural(len(dirs), "directory", "directories"))
+		res, err := scanner.ScanDirectories(dirs, s)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("\n✓ Found %d .env file(s)\n", len(result.Found))
-		fmt.Printf("  New snapshots: %d\n", result.Backed)
-		fmt.Printf("  Unchanged:     %d\n", result.Skipped)
-		if len(result.Errors) > 0 {
-			fmt.Printf("  Warnings:      %d\n", len(result.Errors))
+		fmt.Println()
+		done("Found %d .env %s", len(res.Found), plural(len(res.Found), "file", "files"))
+		note("New versions: %d", res.Backed)
+		note("Unchanged:    %d", res.Skipped)
+		if len(res.Errors) > 0 {
+			note("Skipped:      %d (unreadable paths)", len(res.Errors))
 		}
 		return nil
 	},
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func init() {

@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>envault</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!--
+  Icon sprite. Every icon in the interface is one of these symbols, drawn as a
+  16x16 stroke on currentColor so it inherits the colour of whatever it sits in.
+  Referenced from script with <use href="#i-name">; nothing here is decorative
+  enough to need a label of its own, so the sprite is hidden from assistive tech
+  and each button carries its own aria-label.
+-->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="s-stroke" fill="none" stroke="currentColor" stroke-width="1.35"
+       stroke-linecap="round" stroke-linejoin="round"></g>
+  </defs>
+
+  <symbol id="i-lock" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.8" y="6.9" width="10.4" height="7.3" rx="1.8"/>
+    <path d="M5.5 6.7V4.9a2.5 2.5 0 0 1 5 0v1.8"/>
+    <circle cx="8" cy="10.5" r="1" fill="currentColor" stroke="none"/>
+  </symbol>
+
+  <symbol id="i-search" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="7.2" cy="7.2" r="4.2"/>
+    <path d="M10.4 10.4 13.4 13.4"/>
+  </symbol>
+
+  <symbol id="i-check" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.2 8.4 6.4 11.6 12.8 4.8"/>
+  </symbol>
+
+  <symbol id="i-alert" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8" cy="8" r="5.6"/>
+    <path d="M8 5.1v3.6"/>
+    <circle cx="8" cy="10.9" r=".75" fill="currentColor" stroke="none"/>
+  </symbol>
+
+  <symbol id="i-eye" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M1.6 8S3.9 3.9 8 3.9 14.4 8 14.4 8 12.1 12.1 8 12.1 1.6 8 1.6 8Z"/>
+    <circle cx="8" cy="8" r="1.9"/>
+  </symbol>
+
+  <symbol id="i-eye-off" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.3 4.2A6.4 6.4 0 0 1 8 3.9C12.1 3.9 14.4 8 14.4 8a11 11 0 0 1-2.3 2.7"/>
+    <path d="M4.1 5.4A11 11 0 0 0 1.6 8s2.3 4.1 6.4 4.1a6.5 6.5 0 0 0 2.1-.35"/>
+    <path d="M2.6 2.6 13.4 13.4"/>
+  </symbol>
+
+  <symbol id="i-copy" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5.6" y="5.6" width="7.8" height="7.8" rx="1.5"/>
+    <path d="M10.4 3.4a1.5 1.5 0 0 0-1.5-1.5H4.1a2.2 2.2 0 0 0-2.2 2.2v4.8a1.5 1.5 0 0 0 1.5 1.5"/>
+  </symbol>
+
+  <symbol id="i-restore" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.9 8a5.1 5.1 0 1 0 1.6-3.7"/>
+    <path d="M2.4 2.9v3h3"/>
+  </symbol>
+
+  <symbol id="i-save" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 2.4v7.2"/>
+    <path d="M5.2 7l2.8 2.8L10.8 7"/>
+    <path d="M2.9 12.2v.5a1.4 1.4 0 0 0 1.4 1.4h7.4a1.4 1.4 0 0 0 1.4-1.4v-.5"/>
+  </symbol>
+
+  <symbol id="i-upload" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 13.6V6.4"/>
+    <path d="M5.2 9L8 6.2 10.8 9"/>
+    <path d="M2.9 3.8v-.5a1.4 1.4 0 0 1 1.4-1.4h7.4a1.4 1.4 0 0 1 1.4 1.4v.5"/>
+  </symbol>
+
+  <symbol id="i-trash" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.9 4.3h10.2"/>
+    <path d="M6.2 4.3V3.1a1 1 0 0 1 1-1h1.6a1 1 0 0 1 1 1v1.2"/>
+    <path d="M4.3 4.3l.6 8.1a1.3 1.3 0 0 0 1.3 1.2h3.6a1.3 1.3 0 0 0 1.3-1.2l.6-8.1"/>
+  </symbol>
+
+  <symbol id="i-scan" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8"/>
+    <path d="M13.6 2.6v3.2h-3.2"/>
+  </symbol>
+
+  <symbol id="i-folder" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M1.9 12.3V4.4a1.2 1.2 0 0 1 1.2-1.2h2.6l1.4 1.7h4.8a1.2 1.2 0 0 1 1.2 1.2v6.2a1.2 1.2 0 0 1-1.2 1.2H3.1a1.2 1.2 0 0 1-1.2-1.2Z"/>
+    <path d="M8 7.6v3.2M6.4 9.2h3.2"/>
+  </symbol>
+
+  <symbol id="i-archive" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2" y="2.6" width="12" height="3" rx=".9"/>
+    <path d="M3.1 5.6v6.4a1.4 1.4 0 0 0 1.4 1.4h7a1.4 1.4 0 0 0 1.4-1.4V5.6"/>
+    <path d="M6.6 8.4h2.8"/>
+  </symbol>
+
+  <symbol id="i-broom" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.4 2.4 6.1 5.7"/>
+    <path d="M4.3 7.5 8.5 3.3l4.2 4.2-4.2 4.2z"/>
+    <path d="M6.4 9.6 3.2 12.8M8.5 11.7l-1.4 1.4"/>
+  </symbol>
+
+  <symbol id="i-gear" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8" cy="8" r="2.1"/>
+    <path d="M8 1.9v1.6M8 12.5v1.6M14.1 8h-1.6M3.5 8H1.9M12.3 3.7l-1.1 1.1M4.8 11.2l-1.1 1.1M12.3 12.3l-1.1-1.1M4.8 4.8 3.7 3.7"/>
+  </symbol>
+
+  <symbol id="i-keyboard" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="1.6" y="4.1" width="12.8" height="7.8" rx="1.4"/>
+    <path d="M4.2 6.7h.01M6.8 6.7h.01M9.4 6.7h.01M12 6.7h.01M5.3 9.4h5.4"/>
+  </symbol>
+
+  <symbol id="i-file" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.1 1.9H4.6a1.4 1.4 0 0 0-1.4 1.4v9.4a1.4 1.4 0 0 0 1.4 1.4h6.8a1.4 1.4 0 0 0 1.4-1.4V5.4Z"/>
+    <path d="M9.1 1.9v3.5h3.7"/>
+  </symbol>
+
+  <symbol id="i-back" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.6 3.4 5 8l4.6 4.6"/>
+  </symbol>
+
+  <symbol id="i-play" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5.4 3.6 12 8l-6.6 4.4z"/>
+  </symbol>
+
+  <symbol id="i-stop" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+          stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.3" y="4.3" width="7.4" height="7.4" rx="1.2"/>
+  </symbol>
+</svg>
+
+<header>
+  <span class="brand">
+    <svg class="icon" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-lock"/></svg>
+    envault
+  </span>
+  <span class="vault-path" id="vaultPath"></span>
+  <span class="spacer"></span>
+  <span class="status" id="daemonStatus"><span class="dot"></span><span id="daemonText">checking</span></span>
+  <button id="daemonToggle" class="quiet"></button>
+  <div id="progress"></div>
+</header>
+
+<main id="main" data-view="list">
+  <section class="pane files">
+    <div class="pane-head">
+      <label class="filter" for="filterInput">
+        <svg class="icon glass" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="filterInput" type="text" placeholder="Filter files" autocomplete="off" spellcheck="false">
+        <kbd>/</kbd>
+      </label>
+    </div>
+    <div class="scroll"><div class="list" id="fileList"></div></div>
+  </section>
+
+  <button class="resizer" id="resizer" role="separator" aria-orientation="vertical"
+          aria-label="Resize the file list" title="Drag to resize · double-click to reset"></button>
+
+  <section class="pane detail">
+    <div id="detailHead"></div>
+    <div class="scroll" id="detailScroll"></div>
+  </section>
+</main>
+
+<nav class="commands" id="commandBar"></nav>
+
+<div id="toasts"></div>
+
+<dialog id="promptDialog">
+  <form method="dialog">
+    <h2 id="promptTitle"></h2>
+    <p class="sub" id="promptSub"></p>
+    <input type="text" id="promptInput" autocomplete="off" spellcheck="false">
+    <div class="dialog-actions">
+      <button value="cancel" type="submit">Cancel</button>
+      <button value="ok" type="submit" class="accent" id="promptOk">Continue</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settingsDialog">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <p class="sub">Saved to config.json in your vault.</p>
+    <label for="intervalInput">Check for changes every (seconds)</label>
+    <input type="number" id="intervalInput" min="1">
+    <label for="maxVersionsInput">Versions to keep per file — 0 keeps every one</label>
+    <input type="number" id="maxVersionsInput" min="0">
+    <label for="watchDirsInput">Folders to watch, one per line</label>
+    <textarea id="watchDirsInput" rows="4" spellcheck="false"></textarea>
+    <div class="dialog-actions">
+      <button value="cancel" type="submit">Cancel</button>
+      <button value="ok" type="submit" class="accent">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="keysDialog">
+  <form method="dialog">
+    <h2>Keyboard</h2>
+    <p class="sub">The same motions as the terminal UI.</p>
+    <div class="keys" id="keysList"></div>
+    <div class="dialog-actions"><button value="ok" type="submit" class="accent">Close</button></div>
+  </form>
+</dialog>
+
+<script src="app.js" defer></script>
+</body>
+</html>

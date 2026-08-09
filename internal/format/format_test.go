@@ -1,6 +1,8 @@
 package format
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -24,7 +26,7 @@ func TestHumanSize(t *testing.T) {
 func TestTimeAgo(t *testing.T) {
 	now := time.Now()
 	cases := []struct {
-		t    time.Time
+		at   time.Time
 		want string
 	}{
 		{now.Add(-30 * time.Second), "just now"},
@@ -33,17 +35,53 @@ func TestTimeAgo(t *testing.T) {
 		{now.Add(-50 * time.Hour), "2d ago"},
 	}
 	for _, c := range cases {
-		if got := TimeAgo(c.t); got != c.want {
-			t.Errorf("TimeAgo(%v) = %q, want %q", c.t, got, c.want)
+		if got := TimeAgo(c.at); got != c.want {
+			t.Errorf("TimeAgo(%v) = %q, want %q", c.at, got, c.want)
 		}
 	}
 }
 
-func TestShortenPath(t *testing.T) {
-	t.Setenv("HOME", "/home/tester")
-	// homeDir() is cached via sync.OnceValue, so this only holds in a fresh
-	// process; assert the non-home passthrough which is environment-independent.
+// homeDir is cached with sync.OnceValue, so these exercise the real home rather
+// than a t.Setenv one — which is the behaviour that actually ships.
+func TestShortenPathAbbreviatesHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory in this environment")
+	}
+
+	inHome := filepath.Join(home, "projects", ".env")
+	if got, want := ShortenPath(inHome), filepath.Join("~", "projects", ".env"); got != want {
+		t.Errorf("ShortenPath(%q) = %q, want %q", inHome, got, want)
+	}
 	if got := ShortenPath("/etc/hosts"); got != "/etc/hosts" {
-		t.Errorf("ShortenPath(/etc/hosts) = %q, want unchanged", got)
+		t.Errorf("ShortenPath(/etc/hosts) = %q, want it unchanged", got)
+	}
+}
+
+func TestExpandPathRoundTripsWithShorten(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory in this environment")
+	}
+
+	got, err := ExpandPath("~/projects/.env")
+	if err != nil {
+		t.Fatalf("ExpandPath: %v", err)
+	}
+	if want := filepath.Join(home, "projects", ".env"); got != want {
+		t.Fatalf("ExpandPath(~/projects/.env) = %q, want %q", got, want)
+	}
+	if back := ShortenPath(got); back != "~/projects/.env" {
+		t.Fatalf("ShortenPath did not undo ExpandPath: %q", back)
+	}
+}
+
+func TestExpandPathMakesRelativePathsAbsolute(t *testing.T) {
+	got, err := ExpandPath("relative/.env")
+	if err != nil {
+		t.Fatalf("ExpandPath: %v", err)
+	}
+	if !filepath.IsAbs(got) {
+		t.Fatalf("ExpandPath(relative/.env) = %q, want an absolute path", got)
 	}
 }

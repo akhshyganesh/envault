@@ -3,34 +3,51 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/akhshyganesh/envault/internal/config"
 	"github.com/akhshyganesh/envault/internal/daemon"
 	"github.com/akhshyganesh/envault/internal/format"
-	"github.com/spf13/cobra"
 )
 
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start the envault background daemon",
+	Short: "Run the background daemon in the foreground",
+	Long: `Scans the watch directories on a timer until stopped with Ctrl+C.
+
+The OS startup service installed by 'envault install' runs exactly this.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return daemon.Run()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("envault daemon running — checking every %ds. Ctrl+C to stop.\n", cfg.ScanIntervalSecs)
+		if err := daemon.Run(); err != nil {
+			return err
+		}
+		fmt.Println("\nenvault daemon stopped")
+		return nil
 	},
 }
 
 var stopCmd = &cobra.Command{
 	Use:   "stop",
-	Short: "Stop the envault background daemon",
+	Short: "Stop the background daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return daemon.Stop()
+		_, pid := daemon.IsRunning()
+		if err := daemon.Stop(); err != nil {
+			return err
+		}
+		done("Daemon stopped (PID %d)", pid)
+		return nil
 	},
 }
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Check if the envault daemon is running",
+	Short: "Report whether the daemon is running",
 	Run: func(cmd *cobra.Command, args []string) {
-		running, pid := daemon.IsRunning()
-		if running {
+		if running, pid := daemon.IsRunning(); running {
 			fmt.Printf("envault daemon is running (PID %d)\n", pid)
 		} else {
 			fmt.Println("envault daemon is not running")
@@ -43,23 +60,18 @@ var watchCmd = &cobra.Command{
 	Short: "Add a directory to the watch list",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		absDir, err := format.ExpandPath(args[0])
+		dir, err := format.ExpandPath(args[0])
 		if err != nil {
 			return err
 		}
-
-		_, err = config.AddWatchDir(absDir)
-		if err != nil {
+		if _, err := config.AddWatchDir(dir); err != nil {
 			return err
 		}
-		fmt.Printf("✓ Now watching %s\n", format.ShortenPath(absDir))
+		done("Now watching %s", format.ShortenPath(dir))
 		return nil
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(startCmd)
-	rootCmd.AddCommand(stopCmd)
-	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(watchCmd)
+	rootCmd.AddCommand(startCmd, stopCmd, statusCmd, watchCmd)
 }
