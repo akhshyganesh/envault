@@ -6,7 +6,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/akhshyganesh/envault/internal/format"
+	"github.com/akhshyganesh/envault/internal/store"
 )
+
+var listArchived bool
 
 var listCmd = &cobra.Command{
 	Use:     "list",
@@ -16,6 +19,9 @@ var listCmd = &cobra.Command{
 		s, err := openStore()
 		if err != nil {
 			return err
+		}
+		if listArchived {
+			return listArchivedFiles(s)
 		}
 		files, err := s.ListTrackedFiles()
 		if err != nil {
@@ -39,6 +45,34 @@ var listCmd = &cobra.Command{
 		fmt.Fprintln(w, "Use the # anywhere a file is expected, e.g. 'envault show 3'")
 		return w.Flush()
 	},
+}
+
+// listArchivedFiles prints the archive shelf. The numbers it shows are what
+// 'envault unarchive' accepts.
+func listArchivedFiles(s interface {
+	ListArchived() ([]store.FileHistory, error)
+}) error {
+	files, err := s.ListArchived()
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		fmt.Println("Nothing archived. Use 'envault archive <file|#>' to park a file's history.")
+		return nil
+	}
+
+	w := table()
+	fmt.Fprintln(w, "#\tFILE\tVERSIONS\tARCHIVED")
+	for i, f := range files {
+		last := "—"
+		if latest := f.Latest(); latest != nil {
+			last = format.TimeAgo(latest.Timestamp)
+		}
+		fmt.Fprintf(w, "%d\t%s\t%d\t%s\n", i+1, format.ShortenPath(f.FilePath), len(f.Snapshots), last)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Bring one back with 'envault unarchive <#>'")
+	return w.Flush()
 }
 
 var historyCmd = &cobra.Command{

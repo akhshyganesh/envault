@@ -22,7 +22,7 @@ main.go                       — calls cmd.Execute()
 cmd/                          — one file per group of commands; all thin
   root.go                     — rootCmd, Execute, Version/BuildDate ldflag vars
   shared.go                   — resolveFileArg, loadHistory, pickSnapshot, tables, output helpers
-  init.go  scan.go  list.go  restore.go  maintenance.go
+  init.go  scan.go  list.go  restore.go  maintenance.go  archive.go
   daemon.go  setup.go  transfer.go  peek.go  web.go  upgrade.go
 
 internal/
@@ -33,6 +33,7 @@ internal/
     store.go                  — Store, SaveSnapshot, Content, Restore
     history.go                — Snapshot, FileHistory, History, ListTrackedFiles, prune
     gc.go                     — GC, Forget
+    archive.go                — Archive, Unarchive, ListArchived (the shelf)
   scanner/
     match.go                  — isEnvFile, shouldSkipDir
     scanner.go                — ScanDirectory, ScanDirectories
@@ -99,11 +100,13 @@ leaves root-owned files. `install.sh` follows the same rules via
 |---------|-------|---------|
 | `init` | — | Create `~/.envault/` with defaults |
 | `scan [dirs...]` | — | Discover and back up .env files |
-| `list` / `ls` | — | Tracked files with a numbered index |
+| `list` / `ls` | `--archived` | Tracked files with a numbered index |
 | `history <file\|#>` | — | Version history |
 | `show <file\|#>` | `-v/--version` | Print a version to stdout |
 | `restore <file\|#>` | `-v/--version`, `-o/--output` | Restore from a backup |
 | `forget <file\|#>` | — | Stop tracking, delete history |
+| `archive <file\|#>` | — | Park a file's history outside the live index |
+| `unarchive <file\|#>` | — | Bring an archived file's history back (merges if it was rescanned) |
 | `gc` | — | Delete unreferenced blobs |
 | `watch <dir>` | — | Add to the watch list |
 | `start` / `stop` | — | Run or stop the daemon |
@@ -129,6 +132,7 @@ it.
 ├── config.json      — WatchDirs, ScanIntervalSecs, MaxVersions
 ├── blobs/           — content, named by SHA-256 (deduplicated)
 ├── index/           — per-file JSON history
+├── archives/        — parked histories (see `archive`); blobs stay in blobs/
 ├── envault.pid      — runtime only
 └── envault.log      — runtime only
 ```

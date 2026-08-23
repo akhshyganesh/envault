@@ -25,8 +25,9 @@ const SIDE_MAX = 560;
 const SIDE_DEFAULT = 300;
 
 const state = {
-  files: [], config: {}, daemon: {}, vaultDir: "",
+  files: [], archives: [], config: {}, daemon: {}, vaultDir: "",
   filter: "",
+  showArchived: false,
   selected: null,     // index within the currently visible file list
   detail: null,       // { display, path, snapshots, version, content, prev }
   reveal: new Set(),  // keys revealed one at a time in the current version
@@ -223,7 +224,7 @@ function parseEnv(text) {
 // ---------- selectors ----------
 
 function activeFiles() {
-  const list = state.peek ? state.peek.files : state.files;
+  const list = state.peek ? state.peek.files : (state.showArchived ? state.archives : state.files);
   if (!state.filter) return list;
   const needle = state.filter.toLowerCase();
   return list.filter(f => f.display.toLowerCase().includes(needle));
@@ -298,7 +299,7 @@ function renderFiles() {
     item.append(body);
 
     const count = el("span", "count", f.versions + "v");
-    if (!state.peek && !f.exists) {
+    if (!state.peek && !state.showArchived && !f.exists) {
       const gone = el("span", "gone", " · gone");
       gone.title = "The original file is no longer on disk. Its backups are still here.";
       count.append(gone);
@@ -319,6 +320,12 @@ function emptyFileList() {
   }
   if (state.peek) {
     empty.append(el("div", "big", "This archive has no tracked files"));
+    return empty;
+  }
+  if (state.showArchived) {
+    empty.append(el("div", "big", "Nothing archived yet"));
+    empty.append(el("p", null,
+      "Archive a tracked file to park its history here. It stops being scanned but keeps every version, and can be brought back at any time."));
     return empty;
   }
 
@@ -389,9 +396,16 @@ function renderDetailTools(d, name) {
 
   if (state.peek) {
     tools.append(tool("save", "Save a copy", "quiet", saveFromArchive));
+  } else if (state.showArchived) {
+    // A parked file's history is read-only until it comes back: no restore
+    // over the live path, no forgetting — that is what unarchiving is for.
+    tools.append(tool("save", "Save a copy", "quiet",
+      () => restoreElsewhere(true)));
+    tools.append(tool("restore", "Unarchive", "quiet", unarchiveFile));
   } else {
     tools.append(tool("restore", "Restore", "quiet", restoreInPlace));
-    tools.append(tool("save", "Restore to", "quiet", restoreElsewhere));
+    tools.append(tool("save", "Restore to", "quiet", () => restoreElsewhere(false)));
+    tools.append(tool("archive", "Archive", "quiet", archiveFile));
     tools.append(tool("trash", "Stop tracking", "quiet danger", forgetFile));
   }
 
@@ -521,6 +535,7 @@ function render() {
 async function refresh() {
   const s = await api("/api/state");
   state.files = s.files;
+  state.archives = s.archives || [];
   state.config = s.config;
   state.daemon = s.daemon;
   state.vaultDir = s.vault_dir;
@@ -546,13 +561,14 @@ function loadVersion(version) {
 
   return run(async () => {
     let res, snapshots;
+    const parked = state.showArchived ? "&archived=1" : "";
     if (state.peek) {
       res = await api("/api/peek/content", "POST",
         { path: state.peek.path, file: file.index, version: version || 0 });
       snapshots = res.snapshots;
     } else {
-      const history = await api("/api/history?file=" + file.index);
-      res = await api("/api/content?file=" + file.index + (version ? "&version=" + version : ""));
+      const history = await api("/api/history?file=" + file.index + parked);
+      res = await api("/api/content?file=" + file.index + (version ? "&version=" + version : "") + parked);
       snapshots = history.snapshots;
     }
 
@@ -563,7 +579,7 @@ function loadVersion(version) {
         const p = state.peek
           ? await api("/api/peek/content", "POST",
             { path: state.peek.path, file: file.index, version: res.version - 1 })
-          : await api("/api/content?file=" + file.index + "&version=" + (res.version - 1));
+          : await api("/api/content?file=" + file.index + "&version=" + (res.version - 1) + parked);
         prev = p.content;
       } catch (e) {
         prev = null;
@@ -621,14 +637,45 @@ function restoreInPlace() {
   });
 }
 
-function restoreElsewhere() {
+function restoreElsewhere(archived) {
   const d = state.detail;
   run(async () => {
     const path = await ask("Write v" + d.version + " to a new file",
       "Absolute path, or start with ~/ for your home folder.", "", "Write file");
     if (!path) return;
-    const res = await api("/api/restore", "POST", { file: currentFile().index, version: d.version, path });
+    const res = await api("/api/restore", "POST",
+      { file: currentFile().index, version: d.version, path, archived: !!archived });
     toast("Wrote " + res.path);
+  });
+}
+
+// archiveFile parks the whole history: it stops being scanned or listed but
+// keeps every version and can be brought back unchanged.
+function archiveFile() {
+  const d = state.detail;
+  const file = currentFile();
+  const { name } = splitPath(d.display);
+
+  run(async () => {
+    await api("/api/archive", "POST", { file: file.index });
+    state.selected = null;
+    state.detail = null;
+    toast("Archived " + name + ". It is no longer scanned; find it under Archived.");
+    await refresh();
+  });
+}
+
+function unarchiveFile() {
+  const d = state.detail;
+  const file = currentFile();
+  const { name } = splitPath(d.display);
+
+  run(async () => {
+    await api("/api/unarchive", "POST", { file: file.index });
+    state.selected = null;
+    state.detail = null;
+    toast("Brought back " + name + ". Scan to pick up where it left off.");
+    await refresh();
   });
 }
 
@@ -732,6 +779,19 @@ function saveFromArchive() {
   });
 }
 
+// toggleArchived flips the sidebar between the live index and the archive
+// shelf. The two listings share selection state, so it resets on the way in.
+function toggleArchived() {
+  if (state.peek) return;
+  state.showArchived = !state.showArchived;
+  state.selected = null;
+  state.detail = null;
+  state.filter = "";
+  $("filterInput").value = "";
+  $("filterInput").placeholder = state.showArchived ? "Filter archived" : "Filter files";
+  render();
+}
+
 function openSettings() {
   $("intervalInput").value = state.config.scan_interval_secs;
   $("maxVersionsInput").value = state.config.max_versions;
@@ -757,6 +817,7 @@ $("settingsDialog").addEventListener("close", function () {
 const COMMANDS = [
   { key: "s", icon: "scan",    label: "Scan",     run: scanNow },
   { key: "w", icon: "folder",  label: "Watch",    run: addWatchDir },
+  { key: "a", icon: "archive", label: "Archived", run: toggleArchived },
   { key: "e", icon: "save",    label: "Export",   run: exportVault },
   { key: "i", icon: "upload",  label: "Import",   run: importVault },
   { key: "p", icon: "archive", label: "Read zip", run: peekArchive },
@@ -774,7 +835,7 @@ const SHORTCUTS = [
   ["t", "Raw file"],
   ["c", "Copy this version"],
   ["1…9", "Jump to a version"],
-  ["s w e i p x ,", "The commands along the bottom"],
+  ["s w a e i p x ,", "The commands along the bottom"],
 ];
 
 function renderCommands() {

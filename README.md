@@ -78,10 +78,13 @@ clear over local HTTP — leave it running only while you're using it.
 | `init` | Create `~/.envault/` and a default config |
 | `scan [dirs...]` | Find .env files and back them up (defaults to the watch list) |
 | `list` / `ls` | List tracked files with their index numbers |
+| `list --archived` | List archived files instead |
 | `history <file\|#>` | Show a file's version history |
 | `show <file\|#> [-v N]` | Print a stored version to stdout |
 | `restore <file\|#> [-v N] [-o path]` | Restore a file from a backup |
 | `forget <file\|#>` | Stop tracking a file and delete its history |
+| `archive <file\|#>` | Park a file's backups outside the live index |
+| `unarchive <file\|#>` | Bring an archived file's history back |
 | `gc` | Reclaim disk space by deleting unreferenced content |
 | `watch <dir>` | Add a directory to the watch list |
 | `start` / `stop` | Run or stop the background daemon |
@@ -117,6 +120,7 @@ the end — so "fully uninstalled" never means less than it says.
 ├── config.json      — watch directories, interval, versions to keep
 ├── blobs/           — file contents, each named by its SHA-256 (deduplicated)
 ├── index/           — one JSON file of version history per tracked file
+├── archives/        — histories parked by `envault archive`
 ├── envault.pid      — daemon PID (runtime)
 └── envault.log      — daemon log (runtime)
 ```
@@ -144,6 +148,10 @@ Edit it directly, use `envault watch <dir>`, or open Settings in the browser UI.
   newest versions per file; older ones are dropped on the next backup.
 - Dropping a version doesn't free disk space, because the same content may be
   shared with another file. Run `envault gc` to reclaim it.
+- Archiving a file (`envault archive`, or Archive in the UIs) parks its whole
+  history under `~/.envault/archives/`. It stops appearing in lists and is no
+  longer picked up by scans or the daemon, but every version is kept safe from
+  `gc` until you bring it back with `envault unarchive`.
 - Keep the watch list to the folders you actually keep code in. Pointing it at
   your whole home directory makes the daemon walk macOS-protected folders it
   can never read, and the log fills with permission warnings.

@@ -329,6 +329,50 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+// ── archive ──────────────────────────────────────────────────────────────────
+
+func TestListHasAnArchivedFlag(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"list"})
+	if err != nil {
+		t.Fatalf("find list: %v", err)
+	}
+	if f := cmd.Flags().Lookup("archived"); f == nil {
+		t.Fatal("list has no --archived flag")
+	}
+}
+
+func TestResolveArchivedArgAcceptsAnIndexAndAPath(t *testing.T) {
+	s, paths := seedStore(t, "a.env", "b.env")
+	if err := s.Archive(paths[1]); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	got, err := resolveArchivedArg("1", s)
+	if err != nil {
+		t.Fatalf("resolveArchivedArg(1): %v", err)
+	}
+	if got != paths[1] {
+		t.Fatalf("index 1 resolved to %s, want %s", got, paths[1])
+	}
+
+	got, err = resolveArchivedArg(paths[1], s)
+	if err != nil || got != paths[1] {
+		t.Fatalf("resolveArchivedArg(path) = %s, %v", got, err)
+	}
+}
+
+func TestResolveArchivedArgRejectsAnUnarchivedFile(t *testing.T) {
+	s, paths := seedStore(t, "a.env")
+
+	// Still live-tracked, so it is not in the archive listing.
+	if _, err := resolveArchivedArg(paths[0], s); err == nil {
+		t.Fatal("want an error for a file that is not archived")
+	}
+	if _, err := resolveArchivedArg("9", s); err == nil {
+		t.Fatal("want an error for an out-of-range index")
+	}
+}
+
 // ── command wiring ───────────────────────────────────────────────────────────
 
 // Every documented command must actually be registered, and the flags people
@@ -336,6 +380,7 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestEveryCommandIsRegistered(t *testing.T) {
 	want := []string{
 		"init", "scan", "list", "history", "show", "restore", "forget", "gc",
+		"archive", "unarchive",
 		"watch", "start", "stop", "status", "install", "uninstall",
 		"export", "import", "peek", "upgrade", "version", "ui", "web",
 	}

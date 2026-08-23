@@ -30,6 +30,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/restore", s.handleRestore)
 	mux.HandleFunc("POST /api/forget", s.handleForget)
 	mux.HandleFunc("POST /api/gc", s.handleGC)
+	mux.HandleFunc("POST /api/archive", s.handleArchive)
+	mux.HandleFunc("POST /api/unarchive", s.handleUnarchive)
 	mux.HandleFunc("POST /api/watch", s.handleWatch)
 	mux.HandleFunc("POST /api/config", s.handleConfig)
 	mux.HandleFunc("POST /api/daemon", s.handleDaemon)

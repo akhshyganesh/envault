@@ -43,16 +43,31 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, e)
 	}
 
+	parked, err := s.store.ListArchived()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	archived := make([]fileEntry, 0, len(parked))
+	for i, f := range parked {
+		archived = append(archived, newFileEntry(i+1, f))
+	}
+
 	writeJSON(w, map[string]any{
 		"daemon":    map[string]any{"running": running, "pid": pid},
 		"config":    cfg,
 		"vault_dir": config.VaultDir(),
 		"files":     entries,
+		"archives":  archived,
 	})
 }
 
+// archivedQuery reports whether a read targets the archive listing rather
+// than the live index.
+func archivedQuery(r *http.Request) bool { return r.URL.Query().Get("archived") != "" }
+
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	h, err := s.resolveFile(r.URL.Query().Get("file"))
+	h, err := s.resolveEntry(archivedQuery(r), r.URL.Query().Get("file"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -65,7 +80,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleContent(w http.ResponseWriter, r *http.Request) {
-	h, err := s.resolveFile(r.URL.Query().Get("file"))
+	h, err := s.resolveEntry(archivedQuery(r), r.URL.Query().Get("file"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -126,15 +141,16 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		File    json.Number `json:"file"`
-		Version json.Number `json:"version"`
-		Path    string      `json:"path"`
+		File     json.Number `json:"file"`
+		Version  json.Number `json:"version"`
+		Path     string      `json:"path"`
+		Archived bool        `json:"archived"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	h, err := s.resolveFile(req.File.String())
+	h, err := s.resolveEntry(req.Archived, req.File.String())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -173,6 +189,46 @@ func (s *Server) handleForget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Forget(h.FilePath); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, map[string]any{"path": h.FilePath})
+}
+
+func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		File json.Number `json:"file"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	h, err := s.resolveFile(req.File.String())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.store.Archive(h.FilePath); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, map[string]any{"path": h.FilePath})
+}
+
+func (s *Server) handleUnarchive(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		File json.Number `json:"file"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	h, err := s.resolveArchivedFile(req.File.String())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.store.Unarchive(h.FilePath); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

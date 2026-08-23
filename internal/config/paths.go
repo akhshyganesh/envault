@@ -25,6 +25,10 @@ func BlobsDir() string { return filepath.Join(VaultDir(), "blobs") }
 // IndexDir holds one JSON file of snapshot history per tracked env file.
 func IndexDir() string { return filepath.Join(VaultDir(), "index") }
 
+// ArchivesDir holds the history files of archived env files, parked outside
+// the live index until they are brought back.
+func ArchivesDir() string { return filepath.Join(VaultDir(), "archives") }
+
 // PidPath records the running daemon's process ID.
 func PidPath() string { return filepath.Join(VaultDir(), "envault.pid") }
 
