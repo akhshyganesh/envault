@@ -64,10 +64,46 @@ type daemonDoneMsg struct {
 	err     error
 }
 
+type archiveDoneMsg struct {
+	path string
+	err  error
+}
+
 func loadFilesCmd(s *store.Store) tea.Cmd {
 	return func() tea.Msg {
 		files, err := s.ListTrackedFiles()
 		return filesLoadedMsg{files: files, err: err}
+	}
+}
+
+// loadShelfCmd refreshes the archive shelf after a file is parked or brought
+// back, alongside the tracked list both listings depend on.
+func loadShelfCmd(s *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		archived, err := s.ListArchived()
+		if err != nil {
+			return filesLoadedMsg{err: err}
+		}
+		return archivedLoadedMsg{archived: archived, err: nil}
+	}
+}
+
+type archivedLoadedMsg struct {
+	archived []store.FileHistory
+	err      error
+}
+
+func archiveCmd(s *store.Store, absPath string) tea.Cmd {
+	return func() tea.Msg {
+		err := s.Archive(absPath)
+		return archiveDoneMsg{path: absPath, err: err}
+	}
+}
+
+func unarchiveCmd(s *store.Store, absPath string) tea.Cmd {
+	return func() tea.Msg {
+		err := s.Unarchive(absPath)
+		return archiveDoneMsg{path: absPath, err: err}
 	}
 }
 

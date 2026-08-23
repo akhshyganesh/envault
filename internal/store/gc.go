@@ -21,8 +21,12 @@ func (s *Store) GC() (*GCResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	archived, err := s.ListArchived()
+	if err != nil {
+		return nil, err
+	}
 	referenced := make(map[string]bool)
-	for _, f := range files {
+	for _, f := range append(files, archived...) {
 		for _, snap := range f.Snapshots {
 			referenced[snap.ID] = true
 		}

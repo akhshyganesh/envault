@@ -40,15 +40,21 @@ func (m model) View() string {
 }
 
 func (m model) viewFileList() string {
+	list := m.listing()
+	subtitle, countNoun := "tracked files", "files"
+	if m.showArchived {
+		subtitle, countNoun = "archived files", "archived"
+	}
+
 	var b strings.Builder
-	b.WriteString(theme.Header(m.width, "envault", "tracked files"))
+	b.WriteString(theme.Header(m.width, "envault", subtitle))
 	b.WriteString(theme.ColumnRow.Render(fmt.Sprintf("  %-*s %-*s %*s  %s",
 		colNum, "#", colPath, "FILE", colSize, "VERSIONS", "LAST BACKUP")) + "\n")
 
 	rows := m.visibleRows()
-	start, end := window(m.cursor, len(m.files), rows)
+	start, end := window(m.cursor, len(list), rows)
 	for i := start; i < end; i++ {
-		f := m.files[i]
+		f := list[i]
 		versions := len(f.Snapshots)
 		last := "—"
 		if latest := f.Latest(); latest != nil {
@@ -62,17 +68,27 @@ func (m model) viewFileList() string {
 	}
 
 	m.pad(&b)
-	b.WriteString(m.statusBar(
-		fmt.Sprintf("%d files%s", len(m.files), scrollHint(m.cursor, len(m.files), rows)),
-		theme.Hints(
+	hints := []theme.Hint{
+		theme.Hint{Key: "A", Action: "shelf"},
+	}
+	if m.showArchived {
+		hints = append(hints, theme.Hint{Key: "u", Action: "unarchive"})
+	} else {
+		hints = append(hints,
+			theme.Hint{Key: "a", Action: "archive"},
 			theme.Hint{Key: "s", Action: "scan"},
 			theme.Hint{Key: "d", Action: "daemon"},
 			theme.Hint{Key: "w", Action: "watch"},
 			theme.Hint{Key: "e", Action: "export"},
-			theme.Hint{Key: "i", Action: "import"},
-			theme.Hint{Key: theme.GlyphEnter, Action: "open"},
-			theme.Hint{Key: "q", Action: "quit"},
-		),
+			theme.Hint{Key: "i", Action: "import"})
+	}
+	hints = append(hints,
+		theme.Hint{Key: theme.GlyphEnter, Action: "open"},
+		theme.Hint{Key: "q", Action: "quit"})
+
+	b.WriteString(m.statusBar(
+		fmt.Sprintf("%d %s%s", len(list), countNoun, scrollHint(m.cursor, len(list), rows)),
+		theme.Hints(hints...),
 	))
 	return b.String()
 }

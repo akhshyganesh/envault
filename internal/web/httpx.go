@@ -84,6 +84,32 @@ func (s *Server) resolveFile(arg string) (*store.FileHistory, error) {
 	return &files[idx-1], nil
 }
 
+// resolveArchivedFile maps the 1-based index of the archive listing onto an
+// archived file, the same way resolveFile works for tracked ones.
+func (s *Server) resolveArchivedFile(arg string) (*store.FileHistory, error) {
+	archived, err := s.store.ListArchived()
+	if err != nil {
+		return nil, err
+	}
+	idx, err := strconv.Atoi(strings.TrimSpace(arg))
+	if err != nil {
+		return nil, fmt.Errorf("file must be a number from the list")
+	}
+	if idx < 1 || idx > len(archived) {
+		return nil, fmt.Errorf("file %d not found (have %d)", idx, len(archived))
+	}
+	return &archived[idx-1], nil
+}
+
+// resolveEntry picks the right listing for a request: archived reads carry
+// "archived", everything else comes from the live index.
+func (s *Server) resolveEntry(archived bool, arg string) (*store.FileHistory, error) {
+	if archived {
+		return s.resolveArchivedFile(arg)
+	}
+	return s.resolveFile(arg)
+}
+
 // pickVersion converts a 1-based version to a slice index. An empty or zero
 // version means the latest, which is what every "just show me the file" path
 // wants.

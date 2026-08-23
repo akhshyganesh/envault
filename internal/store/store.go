@@ -21,13 +21,14 @@ import (
 // Store reads and writes the vault. It holds no state beyond its paths, so it
 // is cheap to construct and safe to share.
 type Store struct {
-	blobDir  string
-	indexDir string
+	blobDir    string
+	indexDir   string
+	archiveDir string
 }
 
 // NewStore opens the vault, creating its directories if this is a first run.
 func NewStore() (*Store, error) {
-	s := &Store{blobDir: config.BlobsDir(), indexDir: config.IndexDir()}
+	s := &Store{blobDir: config.BlobsDir(), indexDir: config.IndexDir(), archiveDir: config.ArchivesDir()}
 	for _, dir := range []string{s.blobDir, s.indexDir} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, fmt.Errorf("creating %s: %w", dir, err)

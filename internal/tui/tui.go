@@ -50,6 +50,11 @@ type model struct {
 	history *store.FileHistory
 	hCursor int
 
+	// The archive shelf: parked histories shown in place of the live list
+	// while showArchived is set.
+	archived     []store.FileHistory
+	showArchived bool
+
 	current view
 	width   int
 	height  int
@@ -86,7 +91,11 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	if len(files) == 0 {
+	archived, err := s.ListArchived()
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 && len(archived) == 0 {
 		fmt.Println("No .env files tracked yet. Run 'envault scan' first.")
 		return nil
 	}
@@ -95,6 +104,7 @@ func Run() error {
 	m := model{
 		store:         s,
 		files:         files,
+		archived:      archived,
 		current:       fileListView,
 		daemonRunning: running,
 		daemonPID:     pid,
@@ -105,6 +115,14 @@ func Run() error {
 }
 
 func (m model) Init() tea.Cmd { return nil }
+
+// listing is the slice the file list view currently shows.
+func (m model) listing() []store.FileHistory {
+	if m.showArchived {
+		return m.archived
+	}
+	return m.files
+}
 
 // openPrompt switches to the modal prompt, remembering which view to return to.
 func (m model) openPrompt(kind promptKind, label, initial string, returnTo view) (model, tea.Cmd) {

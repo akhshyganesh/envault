@@ -101,6 +101,11 @@ type stateResp struct {
 		Versions int    `json:"versions"`
 		Exists   bool   `json:"exists"`
 	} `json:"files"`
+	Archives []struct {
+		Index    int    `json:"index"`
+		Path     string `json:"path"`
+		Versions int    `json:"versions"`
+	} `json:"archives"`
 }
 
 // ── Access control ───────────────────────────────────────────────────────────
@@ -320,6 +325,83 @@ func TestRestoreWritesToTheChosenPath(t *testing.T) {
 	}
 	if string(data) != "A=1" {
 		t.Fatalf("restored content = %q", data)
+	}
+}
+
+func TestArchiveParksAFileUntilUnarchiveBringsItBack(t *testing.T) {
+	h, _ := newTestServer(t, map[string]string{"api/.env": "A=1"})
+
+	if rec := do(t, h, http.MethodPost, "/api/archive", map[string]any{"file": 1}); rec.Code != http.StatusOK {
+		t.Fatalf("archive: status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	st := decode[stateResp](t, do(t, h, http.MethodGet, "/api/state", nil))
+	if len(st.Files) != 0 {
+		t.Fatalf("archived file still listed as tracked: %+v", st.Files)
+	}
+	if len(st.Archives) != 1 || st.Archives[0].Versions != 1 || st.Archives[0].Index != 1 {
+		t.Fatalf("archive listing = %+v, want one entry with one version", st.Archives)
+	}
+
+	// GC must not touch content an archived file still points at.
+	res := decode[struct {
+		Removed int `json:"removed"`
+	}](t, do(t, h, http.MethodPost, "/api/gc", nil))
+	if res.Removed != 0 {
+		t.Fatalf("GC reclaimed %d blobs behind an archived file, want 0", res.Removed)
+	}
+
+	if rec := do(t, h, http.MethodPost, "/api/unarchive", map[string]any{"file": 1}); rec.Code != http.StatusOK {
+		t.Fatalf("unarchive: status %d: %s", rec.Code, rec.Body.String())
+	}
+	st = decode[stateResp](t, do(t, h, http.MethodGet, "/api/state", nil))
+	if len(st.Files) != 1 || len(st.Archives) != 0 {
+		t.Fatalf("after unarchive: files=%+v archives=%+v", st.Files, st.Archives)
+	}
+}
+
+func TestArchivedFilesAreBrowsableAndRestorable(t *testing.T) {
+	h, root := newTestServer(t, map[string]string{"api/.env": "A=1"})
+	do(t, h, http.MethodPost, "/api/archive", map[string]any{"file": 1})
+
+	hist := decode[struct {
+		Snapshots []struct{ Version int } `json:"snapshots"`
+	}](t, do(t, h, http.MethodGet, "/api/history?file=1&archived=1", nil))
+	if len(hist.Snapshots) != 1 {
+		t.Fatalf("archived history = %+v, want 1 version", hist.Snapshots)
+	}
+
+	content := decode[struct {
+		Content string `json:"content"`
+	}](t, do(t, h, http.MethodGet, "/api/content?file=1&archived=1", nil))
+	if content.Content != "A=1" {
+		t.Fatalf("archived content = %q, want A=1", content.Content)
+	}
+
+	out := filepath.Join(root, "out", "saved.env")
+	res := decode[struct {
+		Path string `json:"path"`
+	}](t, do(t, h, http.MethodPost, "/api/restore",
+		map[string]any{"file": 1, "version": 1, "path": out, "archived": true}))
+	if res.Path != out {
+		t.Fatalf("restored to %s, want %s", res.Path, out)
+	}
+	if data, err := os.ReadFile(out); err != nil || string(data) != "A=1" {
+		t.Fatalf("restored content = %q (%v)", data, err)
+	}
+}
+
+func TestArchiveRejectsUnknownIndicesAndMethods(t *testing.T) {
+	h, _ := newTestServer(t, map[string]string{"api/.env": "A=1"})
+
+	if rec := do(t, h, http.MethodPost, "/api/archive", map[string]any{"file": 9}); rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for an unknown file index, got %d", rec.Code)
+	}
+	if rec := do(t, h, http.MethodPost, "/api/unarchive", map[string]any{"file": 1}); rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for unarchiving something that is not archived, got %d", rec.Code)
+	}
+	if rec := do(t, h, http.MethodGet, "/api/archive", nil); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("want 405 for GET on a POST-only route, got %d", rec.Code)
 	}
 }
 

@@ -51,10 +51,25 @@ func (m model) onResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case filesLoadedMsg:
 		if msg.err == nil {
 			m.files = msg.files
-			if m.cursor >= len(m.files) {
+			if !m.showArchived && m.cursor >= len(m.files) {
 				m.cursor = max(len(m.files)-1, 0)
 			}
 		}
+
+	case archivedLoadedMsg:
+		if msg.err == nil {
+			m.archived = msg.archived
+			if m.showArchived && m.cursor >= len(m.archived) {
+				m.cursor = max(len(m.archived)-1, 0)
+			}
+		}
+
+	case archiveDoneMsg:
+		if msg.err != nil {
+			return m.fail("Archive", msg.err, 4*time.Second)
+		}
+		m.statusMsg = m.ok("Archived " + format.ShortenPath(msg.path))
+		return m, tea.Batch(loadFilesCmd(m.store), loadShelfCmd(m.store), clearStatusAfter(4*time.Second))
 
 	case scanDoneMsg:
 		if msg.err != nil {
@@ -150,7 +165,8 @@ func moveCursor(cursor *int, count int, key string) bool {
 
 func (m model) onFileListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
-	if moveCursor(&m.cursor, len(m.files), key) {
+	list := m.listing()
+	if moveCursor(&m.cursor, len(list), key) {
 		return m, nil
 	}
 
@@ -158,11 +174,30 @@ func (m model) onFileListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 
-	case "enter", "l", "right":
-		if len(m.files) == 0 {
+	case "A":
+		m.showArchived = !m.showArchived
+		if m.cursor >= len(m.listing()) {
+			m.cursor = max(len(m.listing())-1, 0)
+		}
+		return m, nil
+
+	case "a":
+		if m.showArchived || len(list) == 0 {
 			return m, nil
 		}
-		h, err := m.store.History(m.files[m.cursor].FilePath)
+		return m, archiveCmd(m.store, list[m.cursor].FilePath)
+
+	case "u":
+		if !m.showArchived || len(list) == 0 {
+			return m, nil
+		}
+		return m, unarchiveCmd(m.store, list[m.cursor].FilePath)
+
+	case "enter", "l", "right":
+		if len(list) == 0 {
+			return m, nil
+		}
+		h, err := m.store.History(list[m.cursor].FilePath)
 		if err != nil || len(h.Snapshots) == 0 {
 			return m, nil
 		}

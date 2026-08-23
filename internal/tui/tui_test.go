@@ -1,9 +1,13 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/bubbletea"
 
 	"github.com/akhshyganesh/envault/internal/store"
 	"github.com/akhshyganesh/envault/internal/ui/theme"
@@ -150,5 +154,90 @@ func TestSelectedSnapshotHandlesAnEmptyModel(t *testing.T) {
 	m.hCursor = 99
 	if m.selectedSnapshot() != nil {
 		t.Error("want nil when the cursor is past the end")
+	}
+}
+
+// ── the archive shelf ────────────────────────────────────────────────────────
+
+// newVaultModel builds a model over a real temporary vault with one tracked
+// file, returning the file's path.
+func newVaultModel(t *testing.T) (model, string) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	s, err := store.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	env := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(env, []byte("KEY=value"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.SaveSnapshot(env, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	files, err := s.ListTrackedFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := fixture()
+	m.store = s
+	m.files = files
+	return m, env
+}
+
+func TestTheShelfToggleListsArchivedFiles(t *testing.T) {
+	parked := store.FileHistory{
+		FilePath:  "/home/tester/old/.env",
+		Snapshots: []store.Snapshot{{ID: strings.Repeat("c", 64), Timestamp: time.Now(), Size: 10}},
+	}
+	m := fixture()
+	m.archived = []store.FileHistory{parked}
+
+	out := m.viewFileList()
+	if strings.Contains(out, "old") {
+		t.Error("archived files leaked into the tracked listing")
+	}
+
+	m.showArchived = true
+	out = m.viewFileList()
+	if !strings.Contains(out, "old/.env") {
+		t.Errorf("the shelf does not show the parked file:\n%s", out)
+	}
+}
+
+func TestToggleKeyFlipsToTheShelf(t *testing.T) {
+	m := fixture()
+
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	next := upd.(model)
+	if !next.showArchived {
+		t.Fatal("'A' did not open the archive shelf")
+	}
+
+	upd, _ = next.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	if next2 := upd.(model); next2.showArchived {
+		t.Fatal("'A' did not leave the archive shelf")
+	}
+}
+
+func TestArchiveKeyParksTheSelectedFile(t *testing.T) {
+	m, env := newVaultModel(t)
+
+	upd, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if cmd == nil {
+		t.Fatal("'a' issued no command")
+	}
+	if msg, ok := cmd().(archiveDoneMsg); !ok || msg.err != nil {
+		t.Fatalf("archive command returned %+v, want an error-free archiveDoneMsg", msg)
+	}
+
+	next := upd.(model)
+	files, _ := next.store.ListTrackedFiles()
+	archived, _ := next.store.ListArchived()
+	if len(files) != 0 || len(archived) != 1 {
+		t.Fatalf("after archiving: %d tracked, %d archived", len(files), len(archived))
+	}
+	if _, err := os.Stat(env); err != nil {
+		t.Errorf("the file on disk was disturbed: %v", err)
 	}
 }
